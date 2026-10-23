@@ -14,8 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 type Kind = "heading" | "text" | "button" | "image" | "divider" | "spacer";
 type Align = "left" | "center" | "right";
 type Block = { id: string; type: Kind; text: string; size: number; color: string; align: Align; tailwindClasses?: string };
-type SiteConfig = { backgroundColor: string; textColor: string; bodyTextColor: string; primaryColor: string; secondaryColor: string; fontFamily: string; headingFontFamily: string; pagePadding: number; paddingTop: number; paddingBottom: number; baseFontSize: number; lineHeight: number; borderRadius: number };
-const defaultSiteConfig: SiteConfig = { backgroundColor: "#ffffff", textColor: "#111827", bodyTextColor: "#475569", primaryColor: "#4f46e5", secondaryColor: "#0ea5e9", fontFamily: "Arial, Helvetica, sans-serif", headingFontFamily: "Arial, Helvetica, sans-serif", pagePadding: 16, paddingTop: 16, paddingBottom: 16, baseFontSize: 16, lineHeight: 1.7, borderRadius: 12 };
+type SiteConfig = { backgroundColor: string; textColor: string; bodyTextColor: string; borderColor: string; primaryColor: string; secondaryColor: string; fontFamily: string; headingFontFamily: string; pagePadding: number; paddingTop: number; paddingBottom: number; baseFontSize: number; lineHeight: number; borderRadius: number };
+const defaultSiteConfig: SiteConfig = { backgroundColor: "#ffffff", textColor: "#111827", bodyTextColor: "#475569", borderColor: "#e2e8f0", primaryColor: "#4f46e5", secondaryColor: "#0ea5e9", fontFamily: "Arial, Helvetica, sans-serif", headingFontFamily: "Arial, Helvetica, sans-serif", pagePadding: 16, paddingTop: 16, paddingBottom: 16, baseFontSize: 16, lineHeight: 1.7, borderRadius: 12 };
 const catalog: { type: Kind; label: string; detail: string; icon: typeof Type }[] = [
   { type: "heading", label: "Heading", detail: "Large title", icon: Heading1 },
   { type: "text", label: "Text", detail: "Paragraph", icon: Type },
@@ -115,7 +115,7 @@ export default function Builder() {
     const current = blocks.find((b) => b.id === id);
     if (!current) return;
     const tokens = (current.tailwindClasses || "").split(/\s+/).filter(Boolean);
-    const groups: Record<string, RegExp> = { background: /^bg-/, shape: /^rounded(?:-|$)/, shadow: /^shadow(?:-|$)/, border: /^border(?:-|$)/, weight: /^font-(?:thin|extralight|light|normal|medium|semibold|bold|extrabold|black)$/, fontStyle: /^(?:italic|not-italic)$/, case: /^(?:uppercase|lowercase|capitalize|normal-case)$/, decoration: /^(?:underline|overline|line-through|no-underline)$/, textSize: /^text-(?:xs|sm|base|lg|xl|[2-9]xl)$/, padding: /^p[xytrblse]?-/ , margin: /^m[xytrblse]?-/ , width: /^(?:w-full|w-auto|w-fit|w-screen)$/, align: /^(?:mx-auto|mx-0)$/ };
+    const groups: Record<string, RegExp> = { background: /^(?:bg-|text-(?:white|black)(?:$|-)|text-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-)/, shape: /^rounded(?:-|$)/, shadow: /^shadow(?:-|$)/, border: /^border(?:-|$)/, weight: /^font-(?:thin|extralight|light|normal|medium|semibold|bold|extrabold|black)$/, fontStyle: /^(?:italic|not-italic)$/, case: /^(?:uppercase|lowercase|capitalize|normal-case)$/, decoration: /^(?:underline|overline|line-through|no-underline)$/, textSize: /^text-(?:xs|sm|base|lg|xl|[2-9]xl)$/, padding: /^p[xytrblse]?-/ , margin: /^m[xytrblse]?-/ , width: /^(?:w-full|w-auto|w-fit|w-screen)$/, align: /^(?:mx-auto|mx-0)$/ };
     const matcher = groups[group];
     const remaining = tokens.filter((token) => !matcher.test(token));
     const alreadyApplied = value.split(/\s+/).every((token) => tokens.includes(token));
