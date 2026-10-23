@@ -255,6 +255,8 @@ export default function Builder() {
                 { key: "bodyTextColor", label: "Body text", id: "theme-body-text" },
                 { key: "primaryColor", label: "Primary color", id: "theme-primary" },
                 { key: "secondaryColor", label: "Secondary color", id: "theme-secondary" },
+                { key: "buttonTextColor", label: "Button text", id: "theme-button-text" },
+                { key: "borderColor", label: "Border color", id: "theme-border" },
                 { key: "linkColor", label: "Link color", id: "theme-link" },
               ] as const).map(({ key, label, id }) => (
                 <div key={key} className="min-w-0 space-y-2">
