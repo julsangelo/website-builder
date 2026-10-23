@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Check, ChevronDown, Columns2, Download, GripVertical, Heading1, Image as ImageIcon, Layers3, Minus, Monitor, MousePointer2, Plus, RectangleHorizontal, Redo2, Save, Smartphone, Tablet, Trash2, Type, Undo2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, Columns2, Download, GripVertical, Heading1, Image as ImageIcon, Layers3, Minus, Monitor, MousePointer2, Palette, Plus, RectangleHorizontal, Redo2, Save, Smartphone, Tablet, Trash2, Type, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 type Kind = "heading" | "text" | "button" | "image" | "divider" | "spacer";
 type Align = "left" | "center" | "right";
 type Block = { id: string; type: Kind; text: string; size: number; color: string; align: Align };
+type SiteConfig = { backgroundColor: string; textColor: string; bodyTextColor: string; primaryColor: string; borderColor: string; fontFamily: string; maxWidth: number; pagePadding: number; baseFontSize: number; borderRadius: number };
+const defaultSiteConfig: SiteConfig = { backgroundColor: "#ffffff", textColor: "#111827", bodyTextColor: "#475569", primaryColor: "#4f46e5", borderColor: "#e2e8f0", fontFamily: "Arial, Helvetica, sans-serif", maxWidth: 1000, pagePadding: 40, baseFontSize: 16, borderRadius: 12 };
 const catalog: { type: Kind; label: string; detail: string; icon: typeof Type }[] = [
   { type: "heading", label: "Heading", detail: "Large title", icon: Heading1 },
   { type: "text", label: "Text", detail: "Paragraph", icon: Type },
@@ -30,11 +32,20 @@ const defaults: Record<Kind, Omit<Block, "id" | "type">> = {
   divider: { text: "", size: 1, color: "#e2e8f0", align: "center" },
   spacer: { text: "", size: 48, color: "#64748b", align: "center" },
 };
-function makeBlock(type: Kind): Block { return { id: crypto.randomUUID(), type, ...defaults[type] }; }
+function makeBlock(type: Kind, config: SiteConfig): Block {
+  const base = { ...defaults[type] };
+  if (type === "heading") base.color = config.textColor;
+  if (type === "text") { base.color = config.bodyTextColor; base.size = config.baseFontSize; }
+  if (type === "divider") base.color = config.borderColor;
+  if (type === "image") base.color = config.bodyTextColor;
+  return { id: crypto.randomUUID(), type, ...base };
+}
 function esc(s: string) { return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;"); }
 
 export default function Builder() {
   const [blocks, setBlocks] = useState<Block[]>([]);
+  const [siteConfig, setSiteConfig] = useState<SiteConfig>(defaultSiteConfig);
+  const [themeOpen, setThemeOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [drag, setDrag] = useState<{ kind: "palette" | "block"; type?: Kind; id?: string } | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -44,12 +55,32 @@ export default function Builder() {
   const [future, setFuture] = useState<Block[][]>([]);
   const active = blocks.find((b) => b.id === selected) ?? null;
 
-  useEffect(() => { try { const saved = localStorage.getItem("canvas-builder-project"); if (saved) setBlocks(JSON.parse(saved) as Block[]); } catch {} }, []);
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("canvas-builder-project");
+      if (saved) setBlocks(JSON.parse(saved) as Block[]);
+      const savedConfig = localStorage.getItem("canvas-builder-theme");
+      if (savedConfig) setSiteConfig({ ...defaultSiteConfig, ...JSON.parse(savedConfig) });
+    } catch {}
+  }, []);
+  function updateSiteConfig(patch: Partial<SiteConfig>) {
+    const next = { ...siteConfig, ...patch };
+    setSiteConfig(next);
+    try { localStorage.setItem("canvas-builder-theme", JSON.stringify(next)); } catch {}
+    setBlocks((current) => current.map((block) => {
+      const updated = { ...block };
+      if (patch.textColor && block.type === "heading" && block.color === siteConfig.textColor) updated.color = patch.textColor;
+      if (patch.bodyTextColor && (block.type === "text" || block.type === "image") && block.color === siteConfig.bodyTextColor) updated.color = patch.bodyTextColor;
+      if (patch.borderColor && block.type === "divider" && block.color === siteConfig.borderColor) updated.color = patch.borderColor;
+      if (patch.baseFontSize && block.type === "text" && block.size === siteConfig.baseFontSize) updated.size = patch.baseFontSize;
+      return updated;
+    }));
+  }
   function commit(next: Block[]) {
     setHistory((h) => [...h.slice(-29), blocks]); setFuture([]); setBlocks(next);
     try { localStorage.setItem("canvas-builder-project", JSON.stringify(next)); } catch {}
   }
-  function add(type: Kind, index = blocks.length) { const b = makeBlock(type); const next = [...blocks]; next.splice(index, 0, b); commit(next); setSelected(b.id); }
+  function add(type: Kind, index = blocks.length) { const b = makeBlock(type, siteConfig); const next = [...blocks]; next.splice(index, 0, b); commit(next); setSelected(b.id); }
   function remove(id: string) { commit(blocks.filter((b) => b.id !== id)); if (selected === id) setSelected(null); }
   function update(id: string, patch: Partial<Block>) { commit(blocks.map((b) => b.id === id ? { ...b, ...patch } : b)); }
   function move(id: string, to: number) {
@@ -80,14 +111,14 @@ export default function Builder() {
   function exportJson() { download("website-layout.json", JSON.stringify(blocks, null, 2), "application/json"); }
   function exportHtml() {
     const body = blocks.map((b) => {
-      if (b.type === "heading") return '<h1 style="font-size:' + b.size + 'px;color:' + b.color + ';text-align:' + b.align + '">' + esc(b.text) + '</h1>';
-      if (b.type === "text") return '<p style="font-size:' + b.size + 'px;color:' + b.color + ';text-align:' + b.align + '">' + esc(b.text) + '</p>';
-      if (b.type === "button") return '<div style="text-align:' + b.align + '"><button>' + esc(b.text) + '</button></div>';
-      if (b.type === "image") return '<div style="height:220px;background:#f1f5f9;display:grid;place-items:center;color:#64748b;border:1px dashed #cbd5e1">' + esc(b.text) + '</div>';
+      if (b.type === "heading") return '<h1 style="font-size:' + b.size + 'px;color:' + b.color + ';text-align:' + b.align + ';line-height:1.2">' + esc(b.text) + '</h1>';
+      if (b.type === "text") return '<p style="font-size:' + b.size + 'px;color:' + b.color + ';text-align:' + b.align + ';line-height:1.7">' + esc(b.text) + '</p>';
+      if (b.type === "button") return '<div style="text-align:' + b.align + '"><button class="cta">' + esc(b.text) + '</button></div>';
+      if (b.type === "image") return '<div style="height:220px;background:' + siteConfig.backgroundColor + ';display:grid;place-items:center;color:' + siteConfig.bodyTextColor + ';border:1px dashed ' + siteConfig.borderColor + ';border-radius:' + siteConfig.borderRadius + 'px">' + esc(b.text) + '</div>';
       if (b.type === "divider") return '<hr style="border:0;border-top:' + b.size + 'px solid ' + b.color + ';margin:24px 0">';
       return '<div style="height:' + b.size + 'px"></div>';
     }).join("\n");
-    const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>My website</title><style>body{font-family:Arial,sans-serif;max-width:1000px;margin:0 auto;padding:48px 24px;color:#111827}button{background:#111827;color:white;padding:14px 24px;border:0;border-radius:8px}p{line-height:1.7}</style></head><body>' + body + '</body></html>';
+    const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>My website</title><style>*{box-sizing:border-box}body{font-family:' + siteConfig.fontFamily + ';max-width:' + siteConfig.maxWidth + 'px;margin:0 auto;padding:' + siteConfig.pagePadding + 'px 24px;background:' + siteConfig.backgroundColor + ';color:' + siteConfig.textColor + ';font-size:' + siteConfig.baseFontSize + 'px}button.cta{background:' + siteConfig.primaryColor + ';color:white;padding:14px 24px;border:0;border-radius:' + siteConfig.borderRadius + 'px;cursor:pointer}p{line-height:1.7}</style></head><body>' + body + '</body></html>';
     download("my-website.html", html, "text/html");
   }
   const IconButton = ({ label, onClick, children, disabled = false }: { label: string; onClick: () => void; children: React.ReactNode; disabled?: boolean }) =>
@@ -96,7 +127,7 @@ export default function Builder() {
   return <main className="flex h-screen min-h-[620px] flex-col overflow-hidden bg-background">
     <header className="z-10 flex h-[62px] shrink-0 items-center justify-between border-b bg-card px-4 md:px-6">
       <div className="flex min-w-0 items-center gap-3"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground"><Layers3 size={19} /></div><div><div className="text-sm font-bold">Canvas</div><div className="text-[11px] text-muted-foreground">Website builder</div></div><Separator orientation="vertical" className="mx-2 hidden h-7 sm:block" /><Button variant="ghost" size="sm" className="hidden text-muted-foreground sm:flex">Untitled website <ChevronDown size={14} /></Button></div>
-      <div className="flex items-center gap-1.5 sm:gap-2"><span className="hidden items-center text-xs text-emerald-600 md:flex"><Check size={13} className="mr-1" />Auto-saves locally</span><IconButton label="Undo" onClick={undo} disabled={!history.length}><Undo2 /></IconButton><IconButton label="Redo" onClick={redo} disabled={!future.length}><Redo2 /></IconButton><Button variant="outline" size="sm" onClick={save} className="hidden sm:flex"><Save /> Save</Button><Button size="sm" onClick={exportHtml}><Download /><span className="hidden sm:inline">Export HTML</span><span className="sm:hidden">Export</span></Button><Button variant="ghost" size="icon" title="Export layout JSON" onClick={exportJson} className="hidden sm:inline-flex"><span className="text-[10px] font-bold">JSON</span></Button></div>
+      <div className="flex items-center gap-1.5 sm:gap-2"><span className="hidden items-center text-xs text-emerald-600 md:flex"><Check size={13} className="mr-1" />Auto-saves locally</span><IconButton label="Undo" onClick={undo} disabled={!history.length}><Undo2 /></IconButton><IconButton label="Redo" onClick={redo} disabled={!future.length}><Redo2 /></IconButton><Button variant="ghost" size="sm" onClick={() => setThemeOpen(true)} className="hidden sm:flex"><Palette /> Theme</Button><Button variant="outline" size="sm" onClick={save} className="hidden sm:flex"><Save /> Save</Button><Button size="sm" onClick={exportHtml}><Download /><span className="hidden sm:inline">Export HTML</span><span className="sm:hidden">Export</span></Button><Button variant="ghost" size="icon" title="Export layout JSON" onClick={exportJson} className="hidden sm:inline-flex"><span className="text-[10px] font-bold">JSON</span></Button></div>
     </header>
     <div className="flex min-h-0 flex-1">
       <aside className="flex w-[190px] shrink-0 flex-col border-r bg-card sm:w-[220px] md:w-[250px]">
@@ -111,13 +142,13 @@ export default function Builder() {
           {([{ id: "desktop", icon: Monitor }, { id: "tablet", icon: Tablet }, { id: "mobile", icon: Smartphone }] as const).map((v) => { const I = v.icon; return <Button key={v.id} variant={viewport === v.id ? "secondary" : "ghost"} size="icon" onClick={() => setViewport(v.id)} title={v.id} className="h-8 w-8"><I /></Button>; })}
           <span className="ml-1 hidden text-[11px] text-muted-foreground sm:inline">{viewport === "desktop" ? "100%" : viewport === "tablet" ? "768 px" : "390 px"}</span>
         </div></div>
-        <div className="min-h-0 flex-1 overflow-auto p-3 md:p-8"><div className="mx-auto transition-all" style={{ maxWidth: viewport === "desktop" ? 1050 : viewport === "tablet" ? 768 : 390 }}>
+        <div className="min-h-0 flex-1 overflow-auto p-3 md:p-8"><div className="mx-auto transition-all" style={{ maxWidth: Math.min(siteConfig.maxWidth, viewport === "desktop" ? siteConfig.maxWidth : viewport === "tablet" ? 768 : 390) }}>
           <div className="mb-3 flex items-center justify-between"><div><div className="text-xs font-semibold">Home page</div><div className="mt-1 text-[10px] text-muted-foreground">Drag and drop canvas</div></div><span className="text-[10px] text-muted-foreground">Changes saved locally</span></div>
           <Card className="min-h-[620px] overflow-hidden rounded-lg shadow-sm" onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = drag?.kind === "palette" ? "copy" : "move"; }} onDrop={(e) => { e.preventDefault(); if (dropIndex === null) { if (drag?.kind === "palette" && drag.type) add(drag.type); else if (drag?.id) move(drag.id, blocks.length); } else dropAt(dropIndex); }}>
             <div className="flex h-9 items-center gap-1.5 border-b bg-muted/70 px-3"><i className="h-2 w-2 rounded-full bg-red-300" /><i className="h-2 w-2 rounded-full bg-amber-300" /><i className="h-2 w-2 rounded-full bg-emerald-300" /><div className="mx-auto rounded-md border bg-card px-12 py-1 text-[9px] text-muted-foreground">yourwebsite.com</div></div>
-            <div className="min-h-[580px] p-4 md:p-10" onClick={() => setSelected(null)}>
+            <div className="min-h-[580px] p-4 md:p-10" style={{ backgroundColor: siteConfig.backgroundColor, color: siteConfig.textColor, fontFamily: siteConfig.fontFamily }} onClick={() => setSelected(null)}>
               {blocks.length === 0 ? <div className="flex min-h-[480px] flex-col items-center justify-center rounded-xl border-2 border-dashed bg-muted/30 px-5 text-center" onDragOver={(e) => { e.preventDefault(); setDropIndex(0); }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); dropAt(0); }}><div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl border bg-card text-primary shadow-sm"><MousePointer2 size={25} /></div><h2 className="text-lg font-semibold">Start building your page</h2><p className="mt-2 max-w-xs text-sm leading-6 text-muted-foreground">Drag an element from the left panel and drop it here.</p><Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); add("heading"); }} className="mt-5"><Plus /> Add a heading</Button></div> :
-              <div className="mx-auto max-w-3xl" onClick={(e) => e.stopPropagation()}>{blocks.map((b, i) => <div key={b.id}>
+              <div className="mx-auto" style={{ maxWidth: siteConfig.maxWidth, padding: siteConfig.pagePadding, borderRadius: siteConfig.borderRadius, color: siteConfig.textColor, fontFamily: siteConfig.fontFamily, fontSize: siteConfig.baseFontSize }} onClick={(e) => e.stopPropagation()}>{blocks.map((b, i) => <div key={b.id}>
                 <div onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDropIndex(i); }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); dropAt(i); }} className={"my-1 h-2 rounded-full transition " + (dropIndex === i ? "drop-target" : "")} />
                 <div draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", b.id); setDrag({ kind: "block", id: b.id }); }} onDragEnd={() => { setDrag(null); setDropIndex(null); }} onClick={() => setSelected(b.id)} className={"group relative my-1 rounded-lg border-2 p-4 transition " + (selected === b.id ? "border-primary bg-primary/5" : "border-transparent hover:border-border") + (drag?.id === b.id ? " dragging" : "")}>
                   {selected === b.id && <div className="absolute -top-[23px] left-[-2px] rounded-t-md bg-primary px-2 py-1 text-[9px] font-semibold uppercase text-primary-foreground">{b.type}</div>}
@@ -149,6 +180,34 @@ export default function Builder() {
         </div>
       </aside>
     </div>
+    {themeOpen && <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40" onMouseDown={(event) => { if (event.target === event.currentTarget) setThemeOpen(false); }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="site-theme-title" className="flex h-full w-full max-w-lg flex-col overflow-y-auto border-l bg-card shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-card px-5 py-4">
+          <div><h2 id="site-theme-title" className="flex items-center gap-2 text-base font-semibold"><Palette size={18} /> Global website settings</h2><p className="mt-1 text-xs text-muted-foreground">Changes apply to the canvas preview and exported HTML.</p></div>
+          <Button variant="ghost" size="icon" aria-label="Close global website settings" onClick={() => setThemeOpen(false)}><X /></Button>
+        </div>
+        <div className="space-y-6 p-5">
+          <div><h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Theme colors</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><Label htmlFor="theme-background">Page background</Label><div className="flex items-center gap-2"><Input id="theme-background" type="color" value={siteConfig.backgroundColor} onChange={(e) => updateSiteConfig({ backgroundColor: e.target.value })} className="h-10 w-12 cursor-pointer p-1" /><span className="font-mono text-xs text-muted-foreground">{siteConfig.backgroundColor}</span></div></div>
+              <div className="space-y-2"><Label htmlFor="theme-heading">Heading color</Label><div className="flex items-center gap-2"><Input id="theme-heading" type="color" value={siteConfig.textColor} onChange={(e) => updateSiteConfig({ textColor: e.target.value })} className="h-10 w-12 cursor-pointer p-1" /><span className="font-mono text-xs text-muted-foreground">{siteConfig.textColor}</span></div></div>
+              <div className="space-y-2"><Label htmlFor="theme-body-text">Body text color</Label><div className="flex items-center gap-2"><Input id="theme-body-text" type="color" value={siteConfig.bodyTextColor} onChange={(e) => updateSiteConfig({ bodyTextColor: e.target.value })} className="h-10 w-12 cursor-pointer p-1" /><span className="font-mono text-xs text-muted-foreground">{siteConfig.bodyTextColor}</span></div></div>
+              <div className="space-y-2"><Label htmlFor="theme-primary">Primary / button color</Label><div className="flex items-center gap-2"><Input id="theme-primary" type="color" value={siteConfig.primaryColor} onChange={(e) => updateSiteConfig({ primaryColor: e.target.value })} className="h-10 w-12 cursor-pointer p-1" /><span className="font-mono text-xs text-muted-foreground">{siteConfig.primaryColor}</span></div></div>
+              <div className="space-y-2"><Label htmlFor="theme-border">Borders and dividers</Label><div className="flex items-center gap-2"><Input id="theme-border" type="color" value={siteConfig.borderColor} onChange={(e) => updateSiteConfig({ borderColor: e.target.value })} className="h-10 w-12 cursor-pointer p-1" /><span className="font-mono text-xs text-muted-foreground">{siteConfig.borderColor}</span></div></div>
+            </div>
+          </div>
+          <Separator />
+          <div className="space-y-2"><Label htmlFor="theme-font">Website font</Label><Select id="theme-font" aria-label="Website font" value={siteConfig.fontFamily} onValueChange={(value) => updateSiteConfig({ fontFamily: value })} className="h-10"><option value="Arial, Helvetica, sans-serif">Arial</option><option value="Inter, Arial, sans-serif">Inter (system fallback)</option><option value="system-ui, sans-serif">System UI</option><option value="Georgia, serif">Georgia</option><option value="Trebuchet MS, sans-serif">Trebuchet MS</option><option value="Verdana, sans-serif">Verdana</option></Select><p className="text-xs text-muted-foreground">The selected font is applied to the preview and exported HTML. Web fonts not installed on the visitor’s device use the listed fallback.</p></div>
+          <Separator />
+          <div className="space-y-3"><div className="flex items-center justify-between"><Label>Maximum page width</Label><span className="text-xs tabular-nums text-muted-foreground">{siteConfig.maxWidth}px</span></div><Slider min={640} max={1440} step={20} value={[siteConfig.maxWidth]} onValueChange={([value]) => updateSiteConfig({ maxWidth: value })} /></div>
+          <div className="space-y-3"><div className="flex items-center justify-between"><Label>Page content padding</Label><span className="text-xs tabular-nums text-muted-foreground">{siteConfig.pagePadding}px</span></div><Slider min={16} max={96} step={4} value={[siteConfig.pagePadding]} onValueChange={([value]) => updateSiteConfig({ pagePadding: value })} /></div>
+          <div className="space-y-3"><div className="flex items-center justify-between"><Label>Base font size</Label><span className="text-xs tabular-nums text-muted-foreground">{siteConfig.baseFontSize}px</span></div><Slider min={12} max={22} step={1} value={[siteConfig.baseFontSize]} onValueChange={([value]) => updateSiteConfig({ baseFontSize: value })} /></div>
+          <div className="space-y-3"><div className="flex items-center justify-between"><Label>Corner radius</Label><span className="text-xs tabular-nums text-muted-foreground">{siteConfig.borderRadius}px</span></div><Slider min={0} max={28} step={2} value={[siteConfig.borderRadius]} onValueChange={([value]) => updateSiteConfig({ borderRadius: value })} /></div>
+          <div className="flex flex-wrap justify-between gap-2 border-t pt-4"><Button variant="outline" onClick={() => updateSiteConfig(defaultSiteConfig)}>Reset to defaults</Button><Button onClick={() => setThemeOpen(false)}>Done</Button></div>
+          <p className="text-[11px] leading-5 text-muted-foreground">Settings are saved automatically in this browser, separately from your page elements.</p>
+        </div>
+      </section>
+    </div>}
     {notice && <div role="status" className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-xl bg-foreground px-4 py-3 text-xs font-medium text-background shadow-lg">{notice}</div>}
   </main>;
 }
