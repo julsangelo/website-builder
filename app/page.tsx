@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 type Kind = "heading" | "text" | "button" | "image" | "divider" | "spacer";
 type Align = "left" | "center" | "right";
-type Block = { id: string; type: Kind; text: string; size: number; color: string; align: Align };
+type Block = { id: string; type: Kind; text: string; size: number; color: string; align: Align; tailwindClasses?: string };
 type SiteConfig = { backgroundColor: string; textColor: string; bodyTextColor: string; primaryColor: string; secondaryColor: string; fontFamily: string; headingFontFamily: string; pagePadding: number; paddingTop: number; paddingBottom: number; baseFontSize: number; lineHeight: number; borderRadius: number };
 const defaultSiteConfig: SiteConfig = { backgroundColor: "#ffffff", textColor: "#111827", bodyTextColor: "#475569", primaryColor: "#4f46e5", secondaryColor: "#0ea5e9", fontFamily: "Arial, Helvetica, sans-serif", headingFontFamily: "Arial, Helvetica, sans-serif", pagePadding: 16, paddingTop: 16, paddingBottom: 16, baseFontSize: 16, lineHeight: 1.7, borderRadius: 12 };
 const catalog: { type: Kind; label: string; detail: string; icon: typeof Type }[] = [
@@ -38,7 +38,7 @@ function makeBlock(type: Kind, config: SiteConfig): Block {
   if (type === "text") { base.color = config.bodyTextColor; base.size = config.baseFontSize; }
   if (type === "divider") base.color = config.borderColor;
   if (type === "image") base.color = config.bodyTextColor;
-  return { id: crypto.randomUUID(), type, ...base };
+  return { id: crypto.randomUUID(), type, ...base, tailwindClasses: "" };
 }
 function esc(s: string) { return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;"); }
 
@@ -47,6 +47,7 @@ export default function Builder() {
   const [siteConfig, setSiteConfig] = useState<SiteConfig>(defaultSiteConfig);
   const [themeOpen, setThemeOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const [advancedStylesOpen, setAdvancedStylesOpen] = useState(false);
   const [drag, setDrag] = useState<{ kind: "palette" | "block"; type?: Kind; id?: string } | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
@@ -157,12 +158,12 @@ export default function Builder() {
                 <div draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", b.id); setDrag({ kind: "block", id: b.id }); }} onDragEnd={() => { setDrag(null); setDropIndex(null); }} onClick={() => setSelected(b.id)} className={"group relative my-1 rounded-lg border-2 p-0 transition " + (selected === b.id ? "border-primary bg-primary/5" : "border-transparent hover:border-border") + (drag?.id === b.id ? " dragging" : "")}>
                   {selected === b.id && <div className="absolute -top-[23px] left-[-2px] rounded-t-md bg-primary px-2 py-1 text-[9px] font-semibold uppercase text-primary-foreground">{b.type}</div>}
                   {selected === b.id && <Button variant="destructive" size="icon" title="Delete element" onClick={(e) => { e.stopPropagation(); remove(b.id); }} className="absolute -right-2 -top-3 z-10 h-7 w-7"><Trash2 /></Button>}
-                  {b.type === "heading" && <h1 style={{ fontSize: b.size, color: b.color, textAlign: b.align, lineHeight: 1.2, fontFamily: siteConfig.headingFontFamily }} className="py-2 font-bold tracking-tight">{b.text}</h1>}
-                  {b.type === "text" && <p style={{ fontSize: b.size, color: b.color, textAlign: b.align, lineHeight: siteConfig.lineHeight, margin: 0 }} className="whitespace-pre-wrap">{b.text}</p>}
+                  {b.type === "heading" && <h1 style={{ fontSize: b.size, color: b.color, textAlign: b.align, lineHeight: 1.2, fontFamily: siteConfig.headingFontFamily }} className={"py-2 font-bold tracking-tight " + (b.tailwindClasses || "")}>{b.text}</h1>}
+                  {b.type === "text" && <p style={{ fontSize: b.size, color: b.color, textAlign: b.align, lineHeight: siteConfig.lineHeight, margin: 0 }} className={"whitespace-pre-wrap " + (b.tailwindClasses || "")}>{b.text}</p>}
                   {b.type === "button" && <div style={{ textAlign: b.align }}><span style={{ fontSize: b.size, backgroundColor: siteConfig.primaryColor, color: "#ffffff", borderRadius: siteConfig.borderRadius }} className={"inline-block px-6 py-3 font-medium " + (b.tailwindClasses || "")}>{b.text}</span></div>}
-                  {b.type === "image" && <div style={{ borderRadius: siteConfig.borderRadius, color: siteConfig.bodyTextColor }} className="flex min-h-44 flex-col items-center justify-center gap-3 border-2 border-dashed bg-muted/50"><ImageIcon size={32} /><span className="text-xs">{b.text}</span><span className="text-[10px]">Image upload not included yet</span></div>}
-                  {b.type === "divider" && <hr style={{ border: 0, borderTop: b.size + "px solid " + b.color, margin: "12px 0" }} />}
-                  {b.type === "spacer" && <div style={{ height: b.size }} className="flex items-center justify-center rounded border border-dashed text-[10px] text-muted-foreground">Spacer · {b.size}px</div>}
+                  {b.type === "image" && <div style={{ borderRadius: siteConfig.borderRadius, color: siteConfig.bodyTextColor }} className={"flex min-h-44 flex-col items-center justify-center gap-3 border-2 border-dashed bg-muted/50 " + (b.tailwindClasses || "")}><ImageIcon size={32} /><span className="text-xs">{b.text}</span><span className="text-[10px]">Image upload not included yet</span></div>}
+                  {b.type === "divider" && <hr className={b.tailwindClasses || ""} style={{ border: 0, borderTop: b.size + "px solid " + b.color, margin: "12px 0" }} />}
+                  {b.type === "spacer" && <div style={{ height: b.size }} className={"flex items-center justify-center rounded border border-dashed text-[10px] text-muted-foreground " + (b.tailwindClasses || "")}>Spacer · {b.size}px</div>}
                   {selected === b.id && <div className="absolute -bottom-2 left-2 rounded bg-primary px-1.5 py-0.5 text-[9px] text-primary-foreground">Selected</div>}
                 </div>
               </div>)}<div onDragOver={(e) => { e.preventDefault(); setDropIndex(blocks.length); }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); dropAt(blocks.length); }} className={"mt-2 flex min-h-16 items-center justify-center rounded-lg border-2 border-dashed text-xs transition " + (dropIndex === blocks.length ? "drop-target border-primary" : "text-muted-foreground hover:border-primary/50")}><Plus className="mr-2" size={14} /> Drop here to add an element</div></div>}
@@ -179,6 +180,18 @@ export default function Builder() {
             {active.type !== "divider" && active.type !== "spacer" && <div className="space-y-2"><Label className="text-xs text-muted-foreground">Alignment</Label><Select aria-label="Alignment" value={active.align} onValueChange={(value) => update(active.id, { align: value as Align })} className="h-9 text-xs"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></Select></div>}
             {active.type !== "divider" && <div className="space-y-3"><div className="flex items-center justify-between"><Label className="text-xs text-muted-foreground">{active.type === "spacer" ? "Height" : active.type === "image" ? "Label size" : "Font size"}</Label><span className="text-[11px] tabular-nums text-muted-foreground">{active.size}px</span></div><Slider min={active.type === "spacer" ? 8 : 10} max={active.type === "spacer" ? 200 : active.type === "heading" ? 72 : 36} step={1} value={[active.size]} onValueChange={([size]) => update(active.id, { size })} /></div>}
             {active.type !== "button" && active.type !== "image" && active.type !== "spacer" && <div className="space-y-2"><Label htmlFor="element-color" className="text-xs text-muted-foreground">Color</Label><div className="flex items-center gap-2"><Input id="element-color" type="color" value={active.color} onChange={(e) => update(active.id, { color: e.target.value })} className="h-9 w-12 cursor-pointer p-1" /><span className="font-mono text-[11px] text-muted-foreground">{active.color}</span></div></div>}
+            <div className="space-y-3 rounded-xl border p-3">
+              <div className="text-xs font-semibold">Quick styling</div>
+              <p className="text-[11px] leading-4 text-muted-foreground">Popular Tailwind-style utilities. Pick presets or combine several.</p>
+              {[
+                { title: "Background", options: [{label:"White",value:"bg-white"},{label:"Light gray",value:"bg-slate-100"},{label:"Dark",value:"bg-slate-900 text-white"},{label:"Primary",value:"bg-indigo-600 text-white"},{label:"Blue",value:"bg-sky-100"}] },
+                { title: "Shape & effects", options: [{label:"Rounded",value:"rounded-xl"},{label:"Pill",value:"rounded-full"},{label:"Shadow",value:"shadow-md"},{label:"Large shadow",value:"shadow-xl"},{label:"Border",value:"border border-slate-200"},{label:"No shadow",value:"shadow-none"}] },
+                { title: "Typography", options: [{label:"Bold",value:"font-bold"},{label:"Semibold",value:"font-semibold"},{label:"Italic",value:"italic"},{label:"Uppercase",value:"uppercase"},{label:"Underline",value:"underline"},{label:"Small text",value:"text-sm"}] },
+                { title: "Spacing & layout", options: [{label:"Padding 2",value:"p-2"},{label:"Padding 4",value:"p-4"},{label:"Padding 6",value:"p-6"},{label:"Margin top",value:"mt-4"},{label:"Full width",value:"w-full"},{label:"Centered",value:"mx-auto"}] }
+              ].map((group) => <div key={group.title} className="space-y-2"><Label className="text-[11px] text-muted-foreground">{group.title}</Label><div className="flex flex-wrap gap-1.5">{group.options.map((preset) => <Button key={preset.value} type="button" size="sm" variant="outline" className="h-7 px-2 text-[10px]" onClick={() => update(active.id, { tailwindClasses: [active.tailwindClasses || "", preset.value].filter(Boolean).join(" ") })}>{preset.label}</Button>)}</div></div>)}
+              <Button type="button" variant="ghost" size="sm" className="h-7 px-0 text-xs text-muted-foreground" onClick={() => setAdvancedStylesOpen((open) => !open)}>{advancedStylesOpen ? "Hide advanced styling" : "Advanced styling · all Tailwind utilities"} <ChevronDown size={14} className={advancedStylesOpen ? "rotate-180" : ""} /></Button>
+              {advancedStylesOpen && <div className="space-y-2"><Label htmlFor="tailwind-classes" className="text-xs">Tailwind CSS classes</Label><Textarea id="tailwind-classes" value={active.tailwindClasses || ""} onChange={(e) => update(active.id, { tailwindClasses: e.target.value })} rows={4} placeholder="e.g. flex items-center gap-4 p-6 rounded-2xl shadow-lg hover:scale-105 transition" className="text-xs" /><p className="text-[10px] leading-4 text-muted-foreground">Use Tailwind utilities for layout, spacing, colors, borders, effects, responsive prefixes (md:, lg:) and hover states. Advanced classes apply to the preview and exported HTML.</p><Button type="button" variant="outline" size="sm" onClick={() => update(active.id, { tailwindClasses: "" })}>Clear classes</Button></div>}
+            </div>
             <Button variant="destructive" size="sm" onClick={() => remove(active.id)} className="w-full"><Trash2 /> Delete element</Button>
           </div> : <p className="text-xs leading-5 text-muted-foreground">Select a canvas element to edit its text, size, alignment, and color.</p>}
         </div>
