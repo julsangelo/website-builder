@@ -209,7 +209,7 @@ export default function Builder() {
             </div>
             <Button variant="destructive" size="sm" onClick={() => remove(active.id)} className="w-full"><Trash2 /> Delete element</Button>
           </div> : <p className="text-xs leading-5 text-muted-foreground">Select a canvas element to edit its text, size, alignment, and color.</p>}
-        </div></div>
+        </div>
       </aside>
     </div>
     {themeOpen && <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40" onMouseDown={(event) => { if (event.target === event.currentTarget) setThemeOpen(false); }}>
