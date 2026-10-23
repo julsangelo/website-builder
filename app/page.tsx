@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Check, ChevronDown, Columns2, Download, GripVertical, Heading1, Image as ImageIcon, Layers3, Minus, Monitor, MousePointer2, Palette, Plus, RectangleHorizontal, Redo2, Save, SlidersHorizontal, Smartphone, Sparkles, Tablet, Trash2, Type, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -236,12 +237,12 @@ export default function Builder() {
         </div>
       </aside>
     </div>
-    {themeOpen && <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/40" onMouseDown={(event) => { if (event.target === event.currentTarget) setThemeOpen(false); }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="site-theme-title" className="flex h-full w-full max-w-lg flex-col overflow-y-auto border-l bg-card shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-card px-5 py-4">
-          <div><h2 id="site-theme-title" className="flex items-center gap-2 text-base font-semibold"><Palette size={18} /> Global website settings</h2><p className="mt-1 text-xs text-muted-foreground">Changes apply to the canvas preview and exported HTML.</p></div>
-          <Button variant="ghost" size="icon" aria-label="Close global website settings" onClick={() => setThemeOpen(false)}><X /></Button>
-        </div>
+    <Dialog open={themeOpen} onOpenChange={setThemeOpen}>
+      <DialogContent className="fixed inset-y-0 right-0 left-auto top-0 h-full w-full max-w-lg translate-x-0 translate-y-0 gap-0 overflow-y-auto rounded-none border-l p-0 shadow-2xl sm:rounded-none">
+        <DialogHeader className="sticky top-0 z-10 border-b bg-card px-5 py-4 pr-14">
+          <DialogTitle className="flex items-center gap-2 text-base"><Palette size={18} /> Global website settings</DialogTitle>
+          <DialogDescription className="mt-1 text-xs">Changes apply to the canvas preview and exported HTML.</DialogDescription>
+        </DialogHeader>
         <div className="space-y-6 p-5">
           <section className="space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Global colors</h3>
@@ -286,8 +287,8 @@ export default function Builder() {
           <div className="flex flex-wrap justify-between gap-2 border-t pt-4"><Button variant="outline" onClick={() => updateSiteConfig(defaultSiteConfig)}>Reset global settings</Button><Button onClick={() => setThemeOpen(false)}>Done</Button></div>
           <p className="text-[11px] leading-5 text-muted-foreground">Global settings save automatically in this browser. Element-specific styles are managed separately.</p>
         </div>
-      </section>
-    </div>}
+      </DialogContent>
+    </Dialog>
     {notice && <div role="status" className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-xl bg-foreground px-4 py-3 text-xs font-medium text-background shadow-lg">{notice}</div>}
   </main>;
 }
