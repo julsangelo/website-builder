@@ -49,6 +49,9 @@ export default function Builder() {
   const [selected, setSelected] = useState<string | null>(null);
   const [advancedStylesOpen, setAdvancedStylesOpen] = useState(false);
   const [leftTab, setLeftTab] = useState<"elements" | "layers">("elements");
+  const [leftPanelWidth, setLeftPanelWidth] = useState(250);
+  const [settingsPanelWidth, setSettingsPanelWidth] = useState(320);
+  const [resizingPanel, setResizingPanel] = useState<"left" | "settings" | null>(null);
   const [drag, setDrag] = useState<{ kind: "palette" | "block"; type?: Kind; id?: string } | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">("desktop");
@@ -56,6 +59,25 @@ export default function Builder() {
   const [history, setHistory] = useState<Block[][]>([]);
   const [future, setFuture] = useState<Block[][]>([]);
   const active = blocks.find((b) => b.id === selected) ?? null;
+
+  useEffect(() => {
+    if (!resizingPanel) return;
+    const onMove = (event: PointerEvent) => {
+      if (resizingPanel === "left") setLeftPanelWidth(Math.max(180, Math.min(420, event.clientX)));
+      else setSettingsPanelWidth(Math.max(260, Math.min(560, window.innerWidth - event.clientX)));
+    };
+    const onUp = () => setResizingPanel(null);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [resizingPanel]);
 
   useEffect(() => {
     try {
@@ -92,15 +114,15 @@ export default function Builder() {
   function applyStylePreset(id: string, group: string, value: string) {
     const current = blocks.find((b) => b.id === id);
     if (!current) return;
-    const tokens = (current.tailwindClasses || "").split(/\\s+/).filter(Boolean);
+    const tokens = (current.tailwindClasses || "").split(/\s+/).filter(Boolean);
     const groups: Record<string, RegExp> = { background: /^bg-/, shape: /^rounded(?:-|$)/, shadow: /^shadow(?:-|$)/, border: /^border(?:-|$)/, weight: /^font-(?:thin|extralight|light|normal|medium|semibold|bold|extrabold|black)$/, fontStyle: /^(?:italic|not-italic)$/, case: /^(?:uppercase|lowercase|capitalize|normal-case)$/, decoration: /^(?:underline|overline|line-through|no-underline)$/, textSize: /^text-(?:xs|sm|base|lg|xl|[2-9]xl)$/, padding: /^p[xytrblse]?-/ , margin: /^m[xytrblse]?-/ , width: /^(?:w-full|w-auto|w-fit|w-screen)$/, align: /^(?:mx-auto|mx-0)$/ };
     const matcher = groups[group];
     const remaining = tokens.filter((token) => !matcher.test(token));
-    const alreadyApplied = value.split(/\\s+/).every((token) => tokens.includes(token));
-    const next = alreadyApplied ? remaining : [...remaining, ...value.split(/\\s+/)];
+    const alreadyApplied = value.split(/\s+/).every((token) => tokens.includes(token));
+    const next = alreadyApplied ? remaining : [...remaining, ...value.split(/\s+/)];
     update(id, { tailwindClasses: next.join(" ") });
   }
-  function hasStylePreset(value: string) { const tokens = (active?.tailwindClasses || "").split(/\\s+/).filter(Boolean); return value.split(/\\s+/).every((token) => tokens.includes(token)); }
+  function hasStylePreset(value: string) { const tokens = (active?.tailwindClasses || "").split(/\s+/).filter(Boolean); return value.split(/\s+/).every((token) => tokens.includes(token)); }
   function move(id: string, to: number) {
     const from = blocks.findIndex((b) => b.id === id); if (from < 0) return;
     const next = [...blocks]; const item = next.splice(from, 1)[0];
@@ -148,7 +170,7 @@ export default function Builder() {
       <div className="flex items-center gap-1.5 sm:gap-2"><span className="hidden items-center text-xs text-emerald-600 md:flex"><Check size={13} className="mr-1" />Auto-saves locally</span><IconButton label="Undo" onClick={undo} disabled={!history.length}><Undo2 /></IconButton><IconButton label="Redo" onClick={redo} disabled={!future.length}><Redo2 /></IconButton><Button variant="ghost" size="sm" onClick={() => setThemeOpen(true)} className="hidden sm:flex"><Palette /> Theme</Button><Button variant="outline" size="sm" onClick={save} className="hidden sm:flex"><Save /> Save</Button><Button size="sm" onClick={exportHtml}><Download /><span className="hidden sm:inline">Export HTML</span><span className="sm:hidden">Export</span></Button><Button variant="ghost" size="icon" title="Export layout JSON" onClick={exportJson} className="hidden sm:inline-flex"><span className="text-[10px] font-bold">JSON</span></Button></div>
     </header>
     <div className="flex min-h-0 flex-1">
-      <aside className="flex w-[190px] shrink-0 flex-col border-r bg-card sm:w-[220px] md:w-[250px]">
+      <aside className="relative flex shrink-0 flex-col border-r bg-card" style={{ width: leftPanelWidth }}>
         <div className="grid grid-cols-2 gap-1 border-b p-2"><Button type="button" size="sm" variant={leftTab === "elements" ? "secondary" : "ghost"} onClick={() => setLeftTab("elements")} className="h-9 text-xs"><Plus size={14} className="mr-1" />Elements</Button><Button type="button" size="sm" variant={leftTab === "layers" ? "secondary" : "ghost"} onClick={() => setLeftTab("layers")} className="h-9 text-xs"><Layers3 size={14} className="mr-1" />Layers</Button></div>
         {leftTab === "elements" ? <>
         <div className="border-b px-4 py-4 sm:px-5"><h2 className="text-sm font-semibold">Elements</h2><p className="mt-1 text-xs leading-5 text-muted-foreground">Drag an element onto your page, or click to add it.</p></div>
@@ -158,6 +180,7 @@ export default function Builder() {
         <div className="border-t p-4"><div className="flex items-center gap-2 text-xs font-medium"><div className="grid h-8 w-8 place-items-center rounded-lg bg-muted"><Columns2 size={15} /></div><div>Home page<div className="mt-0.5 text-[10px] font-normal text-muted-foreground">{blocks.length} elements</div></div></div></div>
         </> : <div className="min-h-0 flex-1 overflow-y-auto p-3">{blocks.length === 0 ? <div className="px-3 py-12 text-center"><Layers3 size={24} className="mx-auto mb-3 text-muted-foreground/40" /><p className="text-xs font-medium">No elements yet</p><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Add elements to see the layer list.</p></div> : blocks.map((b, i) => { const item = catalog.find((c) => c.type === b.type)!; const I = item.icon; return <div key={b.id} onClick={() => setSelected(b.id)} className={"mb-1 flex items-center gap-2 rounded-lg px-2 py-2 text-xs " + (selected === b.id ? "bg-accent text-accent-foreground ring-1 ring-primary/30" : "text-muted-foreground hover:bg-muted/70")}><GripVertical size={12} className="shrink-0 opacity-50" /><I size={14} /><span className="flex-1 truncate">{b.text || item.label}</span><Button variant="ghost" size="icon" title="Move up" disabled={i === 0} onClick={(e) => { e.stopPropagation(); move(b.id, i - 1); }} className="h-6 w-6"><ArrowUp /></Button><Button variant="ghost" size="icon" title="Move down" disabled={i === blocks.length - 1} onClick={(e) => { e.stopPropagation(); move(b.id, i + 2); }} className="h-6 w-6"><ArrowDown /></Button></div>; })}</div>}
       </aside>
+      <div role="separator" aria-label="Resize elements and layers panel" aria-orientation="vertical" title="Drag to resize sidebar" onPointerDown={(event) => { event.preventDefault(); setResizingPanel("left"); }} className="z-20 w-1 shrink-0 cursor-col-resize bg-border/50 hover:bg-primary/60 active:bg-primary" />
       <section className="flex min-w-0 flex-1 flex-col">
         <div className="flex h-12 shrink-0 items-center justify-between border-b bg-card/80 px-3 md:px-6"><div className="text-xs text-muted-foreground">Pages <span className="mx-2">/</span><b className="text-foreground">Home</b></div><div className="flex items-center gap-1.5">
           {([{ id: "desktop", icon: Monitor }, { id: "tablet", icon: Tablet }, { id: "mobile", icon: Smartphone }] as const).map((v) => { const I = v.icon; return <Button key={v.id} variant={viewport === v.id ? "secondary" : "ghost"} size="icon" onClick={() => setViewport(v.id)} title={v.id} className="h-8 w-8"><I /></Button>; })}
@@ -187,8 +210,9 @@ export default function Builder() {
           </Card><div className="mt-3 flex justify-between text-[10px] text-muted-foreground"><span>Canvas · {blocks.length} elements</span><span>Autosaved in this browser</span></div>
         </div></div>
       </section>
-      <aside className="hidden min-h-0 shrink-0 flex-col border-l bg-card xl:flex" style={{ width: 320, minWidth: 260, maxWidth: 560, resize: "horizontal", overflowY: "auto", overflowX: "hidden" }}>
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4"><SlidersHorizontal size={15} /><span className="text-sm font-semibold">Element settings</span><span className="ml-auto text-[10px] text-muted-foreground">Drag edge to resize</span></div>
+      <aside className="relative hidden min-h-0 shrink-0 flex-col border-l bg-card xl:flex" style={{ width: settingsPanelWidth, minWidth: 260, maxWidth: 560 }}>
+        <div role="separator" aria-label="Resize element settings panel" aria-orientation="vertical" title="Drag to resize settings" onPointerDown={(event) => { event.preventDefault(); setResizingPanel("settings"); }} className="absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize bg-transparent hover:bg-primary/30 active:bg-primary/50" />
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4"><SlidersHorizontal size={15} /><span className="text-sm font-semibold">Element settings</span><span className="ml-auto text-[10px] text-muted-foreground">Drag left edge to resize</span></div>
         <div className="min-h-0 flex-1 overflow-y-auto p-3"><div className="mb-3 text-[10px] font-bold uppercase tracking-[.14em] text-muted-foreground">Properties & styling</div>
           {active ? <div className="space-y-4"><div className="flex items-center justify-between"><span className="text-xs font-semibold capitalize">{active.type}</span><Button variant="ghost" size="icon" onClick={() => setSelected(null)} className="h-7 w-7"><X /></Button></div>
             {active.type !== "divider" && active.type !== "spacer" && <div className="space-y-2"><Label htmlFor="element-text" className="text-xs text-muted-foreground">Text / label</Label><Textarea id="element-text" value={active.text} onChange={(e) => update(active.id, { text: e.target.value })} rows={3} className="min-h-20 resize-y text-xs" /></div>}
