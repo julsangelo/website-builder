@@ -15,7 +15,8 @@
     "next": "^15.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tailwind-merge": "^2.6.0"
+    "tailwind-merge": "^2.6.0",
+    "@radix-ui/react-select": "^2.1.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
