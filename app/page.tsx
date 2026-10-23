@@ -26,7 +26,7 @@ const catalog: { type: Kind; label: string; detail: string; icon: typeof Type }[
 ];
 const defaults: Record<Kind, Omit<Block, "id" | "type">> = {
   heading: { text: "Build something beautiful.", size: 36, color: "#111827", align: "center" },
-  text: { text: "Tell your story here. Add a paragraph to explain what makes your website special.", size: 16, color: "#64748b", align: "center" },
+  text: { text: "Tell your story here. Add a paragraph to explain what makes your website special.", size: 16, color: "#475569", align: "center" },
   button: { text: "Get started", size: 14, color: "#ffffff", align: "center" },
   image: { text: "Image placeholder", size: 14, color: "#64748b", align: "center" },
   divider: { text: "", size: 1, color: "#e2e8f0", align: "center" },
@@ -67,14 +67,18 @@ export default function Builder() {
     const next = { ...siteConfig, ...patch };
     setSiteConfig(next);
     try { localStorage.setItem("canvas-builder-theme", JSON.stringify(next)); } catch {}
-    setBlocks((current) => current.map((block) => {
-      const updated = { ...block };
-      if (patch.textColor && block.type === "heading" && block.color === siteConfig.textColor) updated.color = patch.textColor;
-      if (patch.bodyTextColor && (block.type === "text" || block.type === "image") && block.color === siteConfig.bodyTextColor) updated.color = patch.bodyTextColor;
-      if (patch.borderColor && block.type === "divider" && block.color === siteConfig.borderColor) updated.color = patch.borderColor;
-      if (patch.baseFontSize && block.type === "text" && block.size === siteConfig.baseFontSize) updated.size = patch.baseFontSize;
-      return updated;
-    }));
+    setBlocks((current) => {
+      const updatedBlocks = current.map((block) => {
+        const updated = { ...block };
+        if (patch.textColor && block.type === "heading" && block.color === siteConfig.textColor) updated.color = patch.textColor;
+        if (patch.bodyTextColor && (block.type === "text" || block.type === "image") && block.color === siteConfig.bodyTextColor) updated.color = patch.bodyTextColor;
+        if (patch.borderColor && block.type === "divider" && block.color === siteConfig.borderColor) updated.color = patch.borderColor;
+        if (patch.baseFontSize && block.type === "text" && block.size === siteConfig.baseFontSize) updated.size = patch.baseFontSize;
+        return updated;
+      });
+      try { localStorage.setItem("canvas-builder-project", JSON.stringify(updatedBlocks)); } catch {}
+      return updatedBlocks;
+    });
   }
   function commit(next: Block[]) {
     setHistory((h) => [...h.slice(-29), blocks]); setFuture([]); setBlocks(next);
