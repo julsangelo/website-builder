@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Check, ChevronDown, Columns2, Download, GripVertical, Heading1, Image as ImageIcon, Layers3, Minus, Monitor, MousePointer2, Plus, RectangleHorizontal, Redo2, Save, Smartphone, Tablet, Trash2, Type, Undo2, X, AlignLeft } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, Columns2, Download, GripVertical, Heading1, Image as ImageIcon, Layers3, Minus, Monitor, MousePointer2, Plus, RectangleHorizontal, Redo2, Save, Smartphone, Tablet, Trash2, Type, Undo2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
