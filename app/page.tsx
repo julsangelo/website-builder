@@ -98,8 +98,8 @@ export default function Builder() {
         if (patch.textColor && block.type === "heading" && block.color === siteConfig.textColor) updated.color = patch.textColor;
         if (patch.bodyTextColor && (block.type === "text" || block.type === "image") && block.color === siteConfig.bodyTextColor) updated.color = patch.bodyTextColor;
         if (patch.borderColor && block.type === "divider" && block.color === siteConfig.borderColor) updated.color = patch.borderColor;
-        if (patch.baseFontSize && block.type === "text" && block.size === siteConfig.baseFontSize) updated.size = patch.baseFontSize;
-        if (patch.headingFontSize && block.type === "heading" && block.size === siteConfig.headingFontSize) updated.size = patch.headingFontSize;
+        if (patch.baseFontSize && block.type === "text" && (block.size === siteConfig.baseFontSize || block.size === defaults.text.size)) updated.size = patch.baseFontSize;
+        if (patch.headingFontSize && block.type === "heading" && (block.size === siteConfig.headingFontSize || block.size === defaults.heading.size)) updated.size = patch.headingFontSize;
         return updated;
       });
       try { localStorage.setItem("canvas-builder-project", JSON.stringify(updatedBlocks)); } catch {}
