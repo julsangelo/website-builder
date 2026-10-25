@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
-  AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight,
+  AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight,
   BadgeCheck, Bold, Box, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Columns2,
   Copy, Eye, FileCode2, FileImage, FileText, Globe, Grip, Heading1, Image as ImageIcon,
   Layers, LayoutGrid, Link2, List, LockKeyhole, Monitor, MoreHorizontal, MousePointer2,
