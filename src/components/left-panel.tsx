@@ -20,10 +20,10 @@ export default function LeftPanel() {
       <Tabs defaultValue="design" className="h-full gap-0">
         <div className="flex items-center justify-between border-b p-2">
           <TabsList variant="line">
-            <TabsTrigger value="design" className="text-xs">
+            <TabsTrigger value="design" className="group-data-[orientation=horizontal]/tabs:after:-bottom-3 text-xs">
               Design
             </TabsTrigger>
-            <TabsTrigger value="assets" className="text-xs">
+            <TabsTrigger value="assets" className="group-data-[orientation=horizontal]/tabs:after:-bottom-3 text-xs">
               Assets
             </TabsTrigger>
           </TabsList>
