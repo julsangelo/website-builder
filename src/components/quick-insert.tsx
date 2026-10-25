@@ -23,7 +23,6 @@ function QuickInsert() {
     return (
         <ScrollArea className="min-h-0 flex-1">
             <div className="flex flex-col gap-3 px-3 pt-1.5">
-                {}
                 <div className="relative">
                     <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -37,7 +36,6 @@ function QuickInsert() {
                     </kbd>
                 </div>
 
-                {}
                 {filtered.length > 0 ? (
                     <div className="grid grid-cols-2 gap-2">
                         {filtered.map((block) => {
@@ -69,7 +67,6 @@ function QuickInsert() {
                     </p>
                 )}
 
-                {}
                 <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
                     <Grip className="size-3.5" />
                     Drag a block onto your page
