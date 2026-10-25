@@ -51,7 +51,7 @@ export default function DesignTab() {
         </ResizablePanel>
       </ResizablePanelGroup>
       <div className="shrink-0 border-t p-1.5">
-        <Button variant="ghost" className="text-xs text-muted-foreground">
+        <Button variant="ghost" className="text-xs text-muted-foreground w-full justify-start">
           <CircleHelp className="size-4" />
           Help &amp; keyboard shortcuts
         </Button>
