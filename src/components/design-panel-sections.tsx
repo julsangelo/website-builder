@@ -34,17 +34,17 @@ const pages = [
   { id: "studio", name: "Our studio", icon: File },
   { id: "work", name: "Selected work", icon: File },
   { id: "contact", name: "Contact", icon: File },
-]
+];
 
 export function PagesList() {
-  const [activeId, setActiveId] = React.useState("home")
+  const [activeId, setActiveId] = React.useState("home");
 
   return (
     <ScrollArea className="min-h-0 flex-1">
       <ul className="flex flex-col gap-0.5 px-3">
         {pages.map((page) => {
-          const isActive = page.id === activeId
-          const Icon = page.icon
+          const isActive = page.id === activeId;
+          const Icon = page.icon;
 
           return (
             <li
@@ -60,7 +60,7 @@ export function PagesList() {
                 type="button"
                 variant="ghost"
                 onClick={() => setActiveId(page.id)}
-                className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-none px-2 py-1.5 text-left font-normal hover:bg-transparent"
+                className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-none px-2 py-1.5 text-left text-xs font-normal hover:bg-transparent"
               >
                 <Icon className="size-4 shrink-0" />
                 <span className="truncate">{page.name}</span>
@@ -91,19 +91,19 @@ export function PagesList() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </li>
-          )
+          );
         })}
       </ul>
     </ScrollArea>
-  )
+  );
 }
 
 type Layer = {
-  id: string
-  name: string
-  icon: React.ElementType
-  children?: Layer[]
-}
+  id: string;
+  name: string;
+  icon: React.ElementType;
+  children?: Layer[];
+};
 
 const layers: Layer[] = [
   { id: "nav", name: "Navigation", icon: LayoutPanelTop },
@@ -133,18 +133,18 @@ const layers: Layer[] = [
     children: [{ id: "spaces-title", name: "Title", icon: Type }],
   },
   { id: "footer", name: "Footer", icon: PanelBottom },
-]
+];
 
 type LayerRowProps = {
-  layer: Layer
-  depth: number
-  activeId: string
-  expanded: Set<string>
-  hidden: Set<string>
-  onSelect: (id: string) => void
-  onToggleExpand: (id: string) => void
-  onToggleHidden: (id: string) => void
-}
+  layer: Layer;
+  depth: number;
+  activeId: string;
+  expanded: Set<string>;
+  hidden: Set<string>;
+  onSelect: (id: string) => void;
+  onToggleExpand: (id: string) => void;
+  onToggleHidden: (id: string) => void;
+};
 
 function LayerRow({
   layer,
@@ -156,11 +156,11 @@ function LayerRow({
   onToggleExpand,
   onToggleHidden,
 }: LayerRowProps) {
-  const Icon = layer.icon
-  const hasChildren = !!layer.children?.length
-  const isOpen = expanded.has(layer.id)
-  const isActive = layer.id === activeId
-  const isHidden = hidden.has(layer.id)
+  const Icon = layer.icon;
+  const hasChildren = !!layer.children?.length;
+  const isOpen = expanded.has(layer.id);
+  const isActive = layer.id === activeId;
+  const isHidden = hidden.has(layer.id);
 
   return (
     <li>
@@ -197,7 +197,7 @@ function LayerRow({
           type="button"
           variant="ghost"
           onClick={() => onSelect(layer.id)}
-          className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-none py-1.5 text-left font-normal hover:bg-transparent"
+          className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-none py-1.5 text-left text-xs font-normal hover:bg-transparent"
         >
           <Icon className="size-4 shrink-0" />
           <span className="truncate">{layer.name}</span>
@@ -236,22 +236,22 @@ function LayerRow({
         </ul>
       )}
     </li>
-  )
+  );
 }
 
 function toggleInSet(set: Set<string>, id: string) {
-  const next = new Set(set)
-  if (next.has(id)) next.delete(id)
-  else next.add(id)
-  return next
+  const next = new Set(set);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return next;
 }
 
 export function LayersTree() {
-  const [activeId, setActiveId] = React.useState("heading")
+  const [activeId, setActiveId] = React.useState("heading");
   const [expanded, setExpanded] = React.useState(
     () => new Set(["hero", "content", "spaces"])
-  )
-  const [hidden, setHidden] = React.useState<Set<string>>(() => new Set())
+  );
+  const [hidden, setHidden] = React.useState<Set<string>>(() => new Set());
 
   return (
     <ScrollArea className="min-h-0 flex-1">
@@ -271,5 +271,5 @@ export function LayersTree() {
         ))}
       </ul>
     </ScrollArea>
-  )
+  );
 }
