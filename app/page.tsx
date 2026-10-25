@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight,
   BadgeCheck, Bold, Box, Check, ChevronDown, ChevronRight, CircleHelp, Code2, Columns2,
-  Copy, Eye, FileCode2, FileImage, FileText, Globe, Grip, Heading1, Image as ImageIcon,
+  Copy, Eye, FileCode2, FileImage, FileText, Globe, Grip, GripVertical, Heading1, Image as ImageIcon,
   Layers, LayoutGrid, Link2, List, LockKeyhole, Monitor, MoreHorizontal, MousePointer2,
-  PanelLeftClose, Plus, Redo2, Rocket, Search, Settings2, Shapes, Smartphone, Sparkles,
+  PanelLeftClose, Plus, Redo2, Rocket, RotateCw, Search, Settings2, Shapes, ShieldCheck, Smartphone, Sparkles,
   Tablet, Type, Undo2, WandSparkles, X, ZoomIn, ZoomOut,
 } from "lucide-react";
 
@@ -36,6 +36,8 @@ export default function Home() {
   const [preview, setPreview] = useState(false);
   const [inspectorTab, setInspectorTab] = useState("Design");
   const [zoom, setZoom] = useState(100);
+  const [previewWidth, setPreviewWidth] = useState(60);
+  const canvasStageRef = useRef<HTMLDivElement>(null);
   const [siteName, setSiteName] = useState("Untitled website");
   const [published, setPublished] = useState(false);
   const [undoStack, setUndoStack] = useState<Block[][]>([]);
@@ -101,7 +103,15 @@ export default function Home() {
         <div className="canvas-toolbar"><div className="toolbar-group"><span style={{ fontSize: 11, fontWeight: 650, color: "#52525b" }}>Home page</span><ChevronRight size={13} color="#a1a1aa"/><span style={{ fontSize: 11, color: "#a1a1aa" }}>Canvas</span><span style={{ background: "#e4e4e7", width: 1, height: 18, margin: "0 3px" }}/><span style={{ fontSize: 10, color: "#a1a1aa" }}>{viewport} · 1440px</span></div>
           <div className="toolbar-group"><button className="btn btn-icon btn-ghost" title="Zoom out" onClick={() => setZoom((z) => Math.max(50, z - 10))}><ZoomOut size={14}/></button><span style={{ fontSize: 10, color: "#71717a", minWidth: 30, textAlign: "center" }}>{zoom}%</span><button className="btn btn-icon btn-ghost" title="Zoom in" onClick={() => setZoom((z) => Math.min(120, z + 10))}><ZoomIn size={14}/></button></div>
         </div>
-        <div className="canvas-center"><div className={`site-frame ${viewport.toLowerCase()}`} style={{ zoom: zoom / 100 }}>
+        <div className="canvas-center" ref={canvasStageRef}>
+          <div className="browser-preview" style={{ width: `${previewWidth}%` }}>
+            <div className="browser-chrome">
+              <div className="browser-traffic-lights" aria-hidden="true"><span /><span /><span /></div>
+              <div className="browser-nav-controls"><button type="button" aria-label="Back" disabled><ArrowLeft size={13}/></button><button type="button" aria-label="Forward" disabled><ArrowRight size={13}/></button><button type="button" aria-label="Reload"><RotateCw size={12}/></button></div>
+              <div className="browser-address"><ShieldCheck size={12}/><span>untitled.website</span><span className="browser-address-lock">Local preview</span></div>
+              <button className="browser-toolbar-action" type="button" aria-label="Open preview options"><MoreHorizontal size={15}/></button>
+            </div>
+            <div className={`site-frame ${viewport.toLowerCase()}`} style={{ zoom: zoom / 100 }}>
           <div className="site-nav"><div className="site-logo"><span className="logo-dot"/>forma<span style={{ color: "#ea580c" }}>.</span></div>{viewport !== "Mobile" && <div className="site-links"><span>Features</span><span>Templates</span><span>Resources</span></div>}<button className="btn btn-primary" style={{ height: 31, fontSize: 10, padding: "0 10px" }} onClick={() => setPreview(true)}>Get started <ArrowRight size={12}/></button></div>
           <div className="site-hero">
             {!preview && <span className="hero-kicker"><Sparkles size={12}/> The visual website builder</span>}
@@ -111,7 +121,22 @@ export default function Home() {
             {!preview && <div className="hero-stats"><div><strong>10k+</strong>Creators</div><div><strong>2 min</strong>To get started</div><div><strong>100%</strong>Your style</div></div>}
           </div>
           {!preview && <div className="preview-art"><div className="art-card"><div className="art-thumb"/><div className="art-lines"><div className="art-line strong"/><div className="art-line"/><div className="art-line orange"/></div></div></div>}
-        </div></div>
+            </div>
+            <button
+              type="button"
+              className="browser-resize-handle"
+              aria-label="Resize preview width"
+              title={`Preview width: ${Math.round(previewWidth)}% — drag to resize`}
+              onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); }}
+              onPointerMove={(event) => {
+                if (event.buttons !== 1 || !canvasStageRef.current) return;
+                const bounds = canvasStageRef.current.getBoundingClientRect();
+                const nextWidth = ((event.clientX - bounds.left) / bounds.width) * 100;
+                setPreviewWidth(Math.min(70, Math.max(50, nextWidth)));
+              }}
+            ><GripVertical size={15}/></button>
+          </div>
+        </div>
         <footer className="bottom-status"><span><span className="status-dot"/>All changes saved</span><span>Made with <span style={{ color: "#ea580c" }}>♥</span> in Forma</span></footer>
       </section>
       <aside className="sidebar right-sidebar">
