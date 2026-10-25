@@ -1,9 +1,16 @@
 import LeftPanel from "@/components/left-panel";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 
 export default function MainContent() {
   return (
-    <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+    <ResizablePanelGroup
+      orientation="horizontal"
+      className="min-h-0 flex-1"
+    >
       <LeftPanel />
       <ResizableHandle />
       <ResizablePanel defaultSize="80%" className="min-w-0">
