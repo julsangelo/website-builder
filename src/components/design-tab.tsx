@@ -25,22 +25,20 @@ import {
     SquareDashed,
     Type,
 } from "lucide-react"
-import { cn } from "cn"
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./ui/resizable"
-import { Button } from "./ui/button"
-import { Input } from "./ui/input"
-import { ScrollArea } from "./ui/scroll-area"
+import { cn } from "@/lib/utils"
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
-} from "./ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu"
 
-/* -------------------------------------------------------------------------- */
 /*                                    Pages                                   */
-/* -------------------------------------------------------------------------- */
 
 const pages = [
     { id: "home", name: "Home", icon: Home },
@@ -110,9 +108,7 @@ function PagesList() {
     )
 }
 
-/* -------------------------------------------------------------------------- */
 /*                                   Layers                                   */
-/* -------------------------------------------------------------------------- */
 
 type Layer = {
     id: string
@@ -288,9 +284,7 @@ function LayersTree() {
     )
 }
 
-/* -------------------------------------------------------------------------- */
 /*                                Quick Insert                                */
-/* -------------------------------------------------------------------------- */
 
 const blocks = [
     { id: "section", name: "Section", icon: LayoutPanelTop },
