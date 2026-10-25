@@ -1,8 +1,20 @@
 import Link from "next/link";
 import { CloudCheck, Play, Redo2, Undo2 } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarGroup, AvatarGroupCount, AvatarImage } from "@/components/ui/avatar";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarGroup,
+  AvatarGroupCount,
+  AvatarImage,
+} from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 
 const pages = [
@@ -19,7 +31,10 @@ export default function Header() {
       <div className="flex items-center gap-5">
         <Link href="/">
           <Avatar size="lg" shape="square">
-            <AvatarImage src="https://github.com/shadcn.png" alt="Workspace logo" />
+            <AvatarImage
+              src="https://github.com/shadcn.png"
+              alt="Workspace logo"
+            />
             <AvatarFallback>WB</AvatarFallback>
           </Avatar>
         </Link>
@@ -56,15 +71,24 @@ export default function Header() {
       <div className="flex items-center gap-5">
         <AvatarGroup>
           <Avatar>
-            <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
+            <AvatarImage
+              src="https://github.com/shadcn.png"
+              alt="@shadcn"
+            />
             <AvatarFallback>CN</AvatarFallback>
           </Avatar>
           <Avatar>
-            <AvatarImage src="https://github.com/maxleiter.png" alt="@maxleiter" />
+            <AvatarImage
+              src="https://github.com/maxleiter.png"
+              alt="@maxleiter"
+            />
             <AvatarFallback>LR</AvatarFallback>
           </Avatar>
           <Avatar>
-            <AvatarImage src="https://github.com/evilrabbit.png" alt="@evilrabbit" />
+            <AvatarImage
+              src="https://github.com/evilrabbit.png"
+              alt="@evilrabbit"
+            />
             <AvatarFallback>ER</AvatarFallback>
           </Avatar>
           <AvatarGroupCount>+3</AvatarGroupCount>
