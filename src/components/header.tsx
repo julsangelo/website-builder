@@ -41,7 +41,7 @@ export default function Header() {
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">Workspace</span>
           <span className="text-sm text-muted-foreground">/</span>
-          <Select variant="ghost" defaultValue="apple">
+          <Select variant="ghost">
             <SelectTrigger className="p-0 text-sm">
               <SelectValue />
             </SelectTrigger>
