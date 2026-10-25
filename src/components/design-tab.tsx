@@ -22,13 +22,6 @@ import QuickInsert from "@/components/quick-insert";
 import { LayersTree, PagesList } from "@/components/design-panel-sections";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Button } from "@/components/ui/button";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 export default function DesignTab() {
     return (
