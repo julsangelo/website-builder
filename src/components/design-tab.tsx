@@ -1,6 +1,5 @@
 "use client"
 
-import * as React from "react"
 import {
     AlignLeft,
     ChevronDown,
@@ -9,27 +8,20 @@ import {
     Eye,
     EyeOff,
     File,
-    Grip,
     Home,
-    Image as ImageIcon,
-    LayoutPanelTop,
     ListFilter,
     MoreHorizontal,
     MousePointer2,
     PanelBottom,
     Plus,
-    RectangleEllipsis,
     Rows3,
-    Search,
     SlidersHorizontal,
     SquareDashed,
-    Type,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import QuickInsert from "@/components/quick-insert";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -38,7 +30,6 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
-/*                                    Pages                                   */
 
 const pages = [
     { id: "home", name: "Home", icon: Home },
@@ -108,7 +99,6 @@ function PagesList() {
     )
 }
 
-/*                                   Layers                                   */
 
 type Layer = {
     id: string
@@ -186,7 +176,7 @@ function LayerRow({
                     isHidden && "opacity-50"
                 )}
             >
-                {/* Chevron (spacer keeps leaf rows aligned) */}
+                {}
                 {hasChildren ? (
                     <button
                         type="button"
@@ -212,7 +202,7 @@ function LayerRow({
                     <span className="truncate">{layer.name}</span>
                 </button>
 
-                {/* Visibility toggle: sibling of the buttons, not nested */}
+                {}
                 <Button
                     variant="ghost"
                     size="icon"
@@ -284,80 +274,6 @@ function LayersTree() {
     )
 }
 
-/*                                Quick Insert                                */
-
-const blocks = [
-    { id: "section", name: "Section", icon: LayoutPanelTop },
-    { id: "heading", name: "Heading", icon: Type },
-    { id: "image", name: "Image", icon: ImageIcon },
-    { id: "button", name: "Button", icon: RectangleEllipsis },
-]
-
-function QuickInsert() {
-    const [query, setQuery] = React.useState("")
-
-    const filtered = blocks.filter((block) =>
-        block.name.toLowerCase().includes(query.trim().toLowerCase())
-    )
-
-    return (
-        <ScrollArea className="min-h-0 flex-1">
-            <div className="flex flex-col gap-3 px-3 pt-1.5">
-                {/* Search */}
-                <div className="relative">
-                    <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Search blocks..."
-                        className="h-8 border-transparent bg-muted pr-10 pl-8 text-xs shadow-none"
-                    />
-                    <kbd className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-[10px] text-muted-foreground">
-                        ⌘K
-                    </kbd>
-                </div>
-
-                {/* Blocks */}
-                {filtered.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-2">
-                        {filtered.map((block) => {
-                            const Icon = block.icon
-
-                            return (
-                                <div
-                                    key={block.id}
-                                    draggable
-                                    onDragStart={(e) => {
-                                        e.dataTransfer.setData("application/x-block", block.id)
-                                        e.dataTransfer.effectAllowed = "copy"
-                                    }}
-                                    className={cn(
-                                        "flex cursor-grab flex-col items-center justify-center gap-2 rounded-lg border py-4 text-xs",
-                                        "text-muted-foreground transition-colors",
-                                        "hover:bg-muted hover:text-foreground active:cursor-grabbing"
-                                    )}
-                                >
-                                    <Icon className="size-5" />
-                                    <span>{block.name}</span>
-                                </div>
-                            )
-                        })}
-                    </div>
-                ) : (
-                    <p className="py-4 text-center text-xs text-muted-foreground">
-                        No blocks found
-                    </p>
-                )}
-
-                {/* Hint */}
-                <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                    <Grip className="size-3.5" />
-                    Drag a block onto your page
-                </p>
-            </div>
-        </ScrollArea>
-    )
-}
 
 export default function DesignTab() {
     return (
@@ -400,7 +316,7 @@ export default function DesignTab() {
                 </ResizablePanel>
             </ResizablePanelGroup>
             <div className="shrink-0 border-t p-1.5">
-                <Button variant='ghost' className='text-xs text-muted-foreground'>
+                <Button variant='ghost' className="text-xs text-muted-foreground">
                     <CircleHelp className="size-4" />
                     Help & keyboard shortcuts
                 </Button>
