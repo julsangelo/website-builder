@@ -59,14 +59,15 @@ function PagesList() {
                                 "data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
                             )}
                         >
-                            <button
+                            <Button
                                 type="button"
+                                variant="ghost"
                                 onClick={() => setActiveId(page.id)}
-                                className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
+                                className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-none px-2 py-1.5 text-left font-normal hover:bg-transparent"
                             >
                                 <Icon className="size-4 shrink-0" />
                                 <span className="truncate">{page.name}</span>
-                            </button>
+                            </Button>
 
                             <DropdownMenu>
                                 <DropdownMenuTrigger
@@ -176,33 +177,35 @@ function LayerRow({
                     isHidden && "opacity-50"
                 )}
             >
-                {}
                 {hasChildren ? (
-                    <button
+                    <Button
                         type="button"
+                        variant="ghost"
+                        size="icon"
                         onClick={() => onToggleExpand(layer.id)}
-                        className="flex size-5 shrink-0 items-center justify-center rounded-sm"
+                        className="size-5 shrink-0 rounded-sm p-0"
+                        aria-label={isOpen ? "Collapse layer" : "Expand layer"}
                     >
                         {isOpen ? (
                             <ChevronDown className="size-3.5" />
                         ) : (
                             <ChevronRight className="size-3.5" />
                         )}
-                    </button>
+                    </Button>
                 ) : (
                     <span className="size-5 shrink-0" />
                 )}
 
-                <button
+                <Button
                     type="button"
+                    variant="ghost"
                     onClick={() => onSelect(layer.id)}
-                    className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
+                    className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-none py-1.5 text-left font-normal hover:bg-transparent"
                 >
                     <Icon className="size-4 shrink-0" />
                     <span className="truncate">{layer.name}</span>
-                </button>
+                </Button>
 
-                {}
                 <Button
                     variant="ghost"
                     size="icon"
