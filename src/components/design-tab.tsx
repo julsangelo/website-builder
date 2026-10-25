@@ -1,5 +1,6 @@
-"use client"
+"use client";
 
+import * as React from "react";
 import {
     AlignLeft,
     ChevronDown,
@@ -18,18 +19,18 @@ import {
     SlidersHorizontal,
     SquareDashed,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import QuickInsert from "@/components/quick-insert";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
-import { Button } from "@/components/ui/button"
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { Button } from "@/components/ui/button";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-
+} from "@/components/ui/dropdown-menu";
 
 const pages = [
     { id: "home", name: "Home", icon: Home },
@@ -98,7 +99,6 @@ function PagesList() {
         </ScrollArea>
     )
 }
-
 
 type Layer = {
     id: string
@@ -273,7 +273,6 @@ function LayersTree() {
         </ScrollArea>
     )
 }
-
 
 export default function DesignTab() {
     return (
