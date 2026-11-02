@@ -12,9 +12,9 @@ import {
 export default function LeftPanel() {
   return (
     <ResizablePanel
-      defaultSize="20%"
-      minSize="15%"
-      maxSize="30%"
+      defaultSize="35%"
+      minSize="30%"
+      maxSize="50%"
       className="h-full border-r"
     >
       <Tabs defaultValue="design" className="h-full gap-0">
