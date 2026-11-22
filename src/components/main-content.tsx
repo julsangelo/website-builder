@@ -13,11 +13,9 @@ export default function MainContent() {
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
         <LeftPanel />
-        <ResizableHandle withHandle />
+        <ResizableHandle />
         <ResizablePanel
-          defaultSize="65%"
-          minSize="50%"
-          maxSize="70%"
+          defaultSize="80%"
           className="min-w-0"
         >
           <PreviewPanel />
