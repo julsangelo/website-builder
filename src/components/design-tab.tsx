@@ -27,7 +27,7 @@ export default function DesignTab() {
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel className="p-1.5 bg-background" defaultSize="33%" minSize="44px" maxSize="92%">
-          <div className="flex h-full flex-col gap-1.5">
+          <div className="flex h-full flex-col">
             <div className="flex shrink-0 items-center justify-between pl-1.5">
               <h4 className="text-xs">Layers</h4>
               <Button variant="ghost" size="icon" aria-label="Filter layers">
@@ -39,7 +39,7 @@ export default function DesignTab() {
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel className="p-1.5 bg-background" defaultSize="33%" minSize="44px" maxSize="92%">
-          <div className="flex h-full flex-col gap-1.5">
+          <div className="flex h-full flex-col">
             <div className="flex shrink-0 items-center justify-between pl-1.5">
               <h4 className="text-xs">Quick Insert</h4>
               <Button variant="ghost" size="icon" aria-label="Quick insert settings">
