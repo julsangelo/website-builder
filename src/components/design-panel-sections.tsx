@@ -73,8 +73,8 @@ export function PagesList() {
                       variant="ghost"
                       size="icon"
                       className={cn(
-                        "mr-1 size-6 shrink-0 opacity-0 text-muted-foreground transition-colors hover:text-foreground",
-                        "group-hover/row:opacity-100 group-hover/row:text-foreground",
+                        "mr-1 size-6 shrink-0 opacity-0 text-inherit transition-colors hover:bg-transparent hover:text-inherit",
+                        "group-hover/row:opacity-100",
                                     "group-data-[active=true]/row:opacity-100",
                         "data-[state=open]:opacity-100"
                       )}
@@ -169,7 +169,7 @@ function LayerRow({
         style={{ paddingLeft: depth * 16 + 4 }}
         className={cn(
           "group/row flex items-center rounded-md pr-1 text-xs",
-          "hover:bg-muted",
+          "hover:bg-muted hover:text-foreground",
           "data-[active=true]:bg-primary/10 data-[active=true]:text-primary",
           isHidden && "opacity-50"
         )}
@@ -180,7 +180,7 @@ function LayerRow({
             variant="ghost"
             size="icon"
             onClick={() => onToggleExpand(layer.id)}
-            className="size-5 shrink-0 rounded-sm p-0 text-muted-foreground transition-colors hover:text-foreground group-hover/row:text-foreground group-data-[active=true]/row:text-primary"
+            className="size-5 shrink-0 rounded-sm p-0 text-inherit transition-colors hover:bg-transparent hover:text-inherit"
             aria-label={isOpen ? "Collapse layer" : "Expand layer"}
           >
             {isOpen ? (
@@ -208,8 +208,8 @@ function LayerRow({
           size="icon"
           onClick={() => onToggleHidden(layer.id)}
           className={cn(
-            "size-6 shrink-0 opacity-0 text-muted-foreground transition-colors hover:text-foreground",
-            "group-hover/row:opacity-100 group-hover/row:text-foreground",
+            "size-6 shrink-0 opacity-0 text-inherit transition-colors hover:bg-transparent hover:text-inherit",
+            "group-hover/row:opacity-100",
             "group-data-[active=true]/row:opacity-100",
             isHidden && "opacity-100"
           )}
