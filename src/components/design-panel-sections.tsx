@@ -254,7 +254,7 @@ export function LayersTree() {
   const [hidden, setHidden] = React.useState<Set<string>>(() => new Set());
 
   return (
-    <ScrollArea className="min-h-0 flex-1">
+    <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-scrollbar]]:hidden">
       <ul className="flex flex-col gap-0.5 px-3">
         {layers.map((layer) => (
           <LayerRow
