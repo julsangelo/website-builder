@@ -5,6 +5,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import Image from "next/image";
@@ -89,6 +90,29 @@ const blockTargets: Record<QuickBlock, SelectedNode> = {
 };
 
 const variantKeys = Object.keys(variants) as VariantKey[];
+
+type CanvasViewportKind = "desktop" | "tablet" | "mobile" | "custom";
+
+type CanvasViewport = {
+  kind: CanvasViewportKind;
+  label: string;
+  width: number;
+  height: number;
+};
+
+const canvasViewportPresets: Record<
+  Exclude<CanvasViewportKind, "custom">,
+  CanvasViewport
+> = {
+  desktop: { kind: "desktop", label: "Desktop", width: 1200, height: 860 },
+  tablet: { kind: "tablet", label: "Tablet", width: 768, height: 1024 },
+  mobile: { kind: "mobile", label: "Mobile", width: 390, height: 844 },
+};
+
+const customViewportBounds = {
+  width: { min: 320, max: 1920 },
+  height: { min: 480, max: 2160 },
+} as const;
 
 function adjacentVariant(current: VariantKey, direction: -1 | 1) {
   const index = variantKeys.indexOf(current);
@@ -313,25 +337,170 @@ function Navigator({ actions }: { actions: EditorActions }) {
   );
 }
 
-function CanvasToolbar() {
+function CanvasToolbar({
+  onViewportChange,
+  viewport,
+}: {
+  onViewportChange: (viewport: CanvasViewport) => void;
+  viewport: CanvasViewport;
+}) {
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customWidth, setCustomWidth] = useState(String(viewport.width));
+  const [customHeight, setCustomHeight] = useState(String(viewport.height));
+  const parsedWidth = Number(customWidth);
+  const parsedHeight = Number(customHeight);
+  const customIsValid =
+    Number.isInteger(parsedWidth) &&
+    parsedWidth >= customViewportBounds.width.min &&
+    parsedWidth <= customViewportBounds.width.max &&
+    Number.isInteger(parsedHeight) &&
+    parsedHeight >= customViewportBounds.height.min &&
+    parsedHeight <= customViewportBounds.height.max;
+
+  function choosePreset(kind: Exclude<CanvasViewportKind, "custom">) {
+    const preset = canvasViewportPresets[kind];
+    setCustomWidth(String(preset.width));
+    setCustomHeight(String(preset.height));
+    setCustomOpen(false);
+    onViewportChange(preset);
+  }
+
+  function applyCustomViewport() {
+    if (!customIsValid) return;
+    onViewportChange({
+      kind: "custom",
+      label: "Custom",
+      width: parsedWidth,
+      height: parsedHeight,
+    });
+    setCustomOpen(false);
+  }
+
+  const viewportButtons = [
+    { kind: "desktop", label: "Desktop viewport", icon: Monitor },
+    { kind: "tablet", label: "Tablet viewport", icon: Tablet },
+    { kind: "mobile", label: "Mobile viewport", icon: Smartphone },
+  ] as const;
+
   return (
-    <div className="flex h-12 items-center justify-between border-b border-zinc-200 bg-white px-4 text-xs">
+    <div className="relative flex h-12 items-center justify-between border-b border-zinc-200 bg-white px-4 text-xs">
       <div className="flex items-center gap-1.5 text-zinc-600"><Home className="size-3.5" /> Home <ChevronDown className="size-3" /></div>
       <div className="flex items-center gap-1 rounded-md bg-zinc-50 p-1">
-        <Button className="size-7 bg-orange-100 text-orange-600 hover:bg-orange-100" size="icon-sm" variant="ghost"><Monitor className="size-3.5" /></Button>
-        <Button className="size-7 text-zinc-500" size="icon-sm" variant="ghost"><Tablet className="size-3.5" /></Button>
-        <Button className="size-7 text-zinc-500" size="icon-sm" variant="ghost"><Smartphone className="size-3.5" /></Button>
+        {viewportButtons.map(({ kind, label, icon: ViewportIcon }) => {
+          const active = viewport.kind === kind;
+          return (
+            <Button
+              aria-label={label}
+              aria-pressed={active}
+              className={
+                "size-7 " +
+                (active
+                  ? "bg-orange-100 text-orange-600 hover:bg-orange-100"
+                  : "text-zinc-500")
+              }
+              key={kind}
+              onClick={() => choosePreset(kind)}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <ViewportIcon className="size-3.5" />
+            </Button>
+          );
+        })}
         <Separator className="mx-1 h-4" orientation="vertical" />
-        <span className="pr-1 text-[11px] text-zinc-500">1200 px</span><ChevronDown className="mr-1 size-3 text-zinc-500" />
+        <Button
+          aria-expanded={customOpen}
+          aria-haspopup="dialog"
+          className={
+            "h-7 gap-1 px-1.5 text-[11px] font-normal " +
+            (viewport.kind === "custom" ? "text-orange-600" : "text-zinc-500")
+          }
+          onClick={() => setCustomOpen((open) => !open)}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          {viewport.width} × {viewport.height}
+          <ChevronDown className="size-3" />
+        </Button>
       </div>
       <div className="flex items-center gap-3 text-zinc-500"><Code2 className="size-3.5" /><MoreHorizontal className="size-4" /></div>
+      {customOpen && (
+        <form
+          aria-label="Custom canvas size"
+          className="absolute top-11 left-1/2 z-30 w-64 -translate-x-1/2 rounded-lg border border-zinc-200 bg-white p-3 shadow-xl"
+          onSubmit={(event) => {
+            event.preventDefault();
+            applyCustomViewport();
+          }}
+          role="dialog"
+        >
+          <div className="mb-2 flex items-center justify-between">
+            <p className="font-semibold text-zinc-900">Custom canvas size</p>
+            <span className="text-[10px] text-zinc-400">px</span>
+          </div>
+          <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+            <label className="grid gap-1 text-[10px] text-zinc-500">
+              Width
+              <Input
+                aria-label="Canvas width"
+                className="h-8 text-xs"
+                inputMode="numeric"
+                max={customViewportBounds.width.max}
+                min={customViewportBounds.width.min}
+                onChange={(event) => setCustomWidth(event.target.value)}
+                type="number"
+                value={customWidth}
+              />
+            </label>
+            <span className="pb-2 text-zinc-400">×</span>
+            <label className="grid gap-1 text-[10px] text-zinc-500">
+              Height
+              <Input
+                aria-label="Canvas height"
+                className="h-8 text-xs"
+                inputMode="numeric"
+                max={customViewportBounds.height.max}
+                min={customViewportBounds.height.min}
+                onChange={(event) => setCustomHeight(event.target.value)}
+                type="number"
+                value={customHeight}
+              />
+            </label>
+          </div>
+          <p className="mt-2 text-[9px] text-zinc-400">
+            Width 320–1920 · height 480–2160
+          </p>
+          <div className="mt-3 flex justify-end gap-2">
+            <Button
+              className="h-7 px-2 text-[10px]"
+              onClick={() => setCustomOpen(false)}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              Cancel
+            </Button>
+            <Button
+              className="h-7 bg-orange-600 px-3 text-[10px] text-white hover:bg-orange-700"
+              disabled={!customIsValid}
+              size="sm"
+              type="submit"
+            >
+              Apply
+            </Button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }
 
-function Artboard({ actions }: { actions: EditorActions }) {
+function Artboard({ actions, viewport }: { actions: EditorActions; viewport: CanvasViewport }) {
   const [dragging, setDragging] = useState(false);
   const selectedClass = "ring-1 ring-orange-500 ring-offset-[-1px]";
+  const narrow = viewport.width < 768;
 
   function handleDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault();
@@ -344,22 +513,23 @@ function Artboard({ actions }: { actions: EditorActions }) {
 
   return (
     <article
-      className="relative w-full max-w-[972px] overflow-hidden bg-[#fff7ec] shadow-[0_10px_30px_rgba(74,50,25,0.09)]"
+      className="relative shrink-0 overflow-x-hidden overflow-y-auto bg-[#fff7ec] shadow-[0_10px_30px_rgba(74,50,25,0.09)]"
       onDragEnter={() => setDragging(true)}
       onDragLeave={() => setDragging(false)}
       onDragOver={(event) => event.preventDefault()}
       onDrop={handleDrop}
+      style={{ height: viewport.height, width: viewport.width }}
     >
-      <nav className="flex h-17 items-center justify-between bg-[#fff7ec] px-7 text-[10px] text-[#333b32] sm:px-9">
+      <nav className={"flex h-17 items-center justify-between bg-[#fff7ec] text-[10px] text-[#333b32] " + (narrow ? "px-7" : "px-9")}>
         <p className="text-[27px] font-semibold tracking-tight">forma.</p>
-        <div className="hidden items-center gap-6 sm:flex"><span>Our studio</span><span>Selected work</span><span>Journal</span><span className="flex items-center gap-1">Let&apos;s talk <ArrowUpRight className="size-3" /></span></div>
+        <div className={(narrow ? "hidden" : "flex") + " items-center gap-6"}><span>Our studio</span><span>Selected work</span><span>Journal</span><span className="flex items-center gap-1">Let&apos;s talk <ArrowUpRight className="size-3" /></span></div>
       </nav>
-      <section className="grid min-h-[360px] grid-cols-1 md:grid-cols-2">
-        <div className={"relative flex flex-col justify-center px-7 py-10 sm:px-9 " + (actions.selected === "section" ? selectedClass : "")}>
+      <section className={"grid min-h-[360px] " + (narrow ? "grid-cols-1" : "grid-cols-2")}>
+        <div className={"relative flex flex-col justify-center py-10 " + (narrow ? "px-7 " : "px-9 ") + (actions.selected === "section" ? selectedClass : "")}>
           <Button className="mb-3 h-auto w-fit gap-2 rounded-none p-0 text-[9px] font-normal uppercase tracking-wide text-[#4a5144] hover:bg-transparent" onClick={() => actions.choose("section", "artboard")} variant="ghost"><span className="size-1 rounded-full bg-[#333b32]" /> Interiors with intention</Button>
           <Button className={"relative h-auto w-fit justify-start rounded-none p-0 text-left font-normal hover:bg-transparent " + (actions.selected === "heading" ? selectedClass : "")} onClick={() => actions.choose("heading", "artboard")} variant="ghost">
             {actions.selected === "heading" && <span className="absolute -top-6 left-0 rounded-t bg-orange-600 px-2 py-1 text-[10px] font-sans text-white">T Hero heading</span>}
-            <span className="text-5xl font-semibold leading-[0.84] tracking-[-0.05em] text-[#333b32] sm:text-6xl">Spaces for<br />slower living.</span>
+            <span className={(narrow ? "text-5xl" : "text-6xl") + " font-semibold leading-[0.84] tracking-[-0.05em] text-[#333b32]"}>Spaces for<br />slower living.</span>
           </Button>
           <p className="mt-6 max-w-xs text-[10px] leading-4 text-[#6f746c]">Thoughtful interiors. Natural materials. A quieter kind of luxury, made for the way you live.</p>
           <Button className="mt-5 w-fit rounded-none bg-[#333b32] px-4 text-[10px] text-white hover:bg-[#454d43]" size="sm">Explore our work <ArrowUpRight className="size-3" /></Button>
@@ -370,7 +540,7 @@ function Artboard({ actions }: { actions: EditorActions }) {
           {actions.selected === "hero-image" && <span className="absolute right-2 bottom-2 rounded bg-orange-600 px-2 py-1 text-[10px] text-white">Image</span>}
         </Button>
       </section>
-      <section className={"relative border-t-2 border-orange-500 px-7 py-6 sm:px-9 " + (actions.selected === "gallery" ? selectedClass : "")}>
+      <section className={"relative border-t-2 border-orange-500 py-6 " + (narrow ? "px-7 " : "px-9 ") + (actions.selected === "gallery" ? selectedClass : "")}>
         <div className="mb-5 flex items-center justify-between gap-3">
           <Button className="h-auto justify-start rounded-none p-0 text-left text-2xl font-semibold tracking-[-0.03em] text-[#333b32] hover:bg-transparent" onClick={() => actions.choose("gallery", "artboard")} variant="ghost">Considered spaces, lasting feeling.</Button>
           <span className="text-[9px] text-[#6f746c]">Selected work / 01—03</span>
@@ -382,7 +552,7 @@ function Artboard({ actions }: { actions: EditorActions }) {
             ["/prototype/forma-project-3.png", "A retreat by the coast", "Residential · North sea"],
           ].map(([source, title, location]) => (
             <div key={title}>
-              <Image alt="Interior project" className="h-20 w-full object-cover sm:h-31" height={125} sizes="(max-width: 768px) 30vw, 288px" src={source} width={288} />
+              <Image alt="Interior project" className={(narrow ? "h-20" : "h-31") + " w-full object-cover"} height={125} sizes="(max-width: 768px) 30vw, 288px" src={source} width={288} />
               <p className="mt-1.5 truncate text-[10px] font-medium text-[#333b32]">{title}</p>
               <p className="mt-0.5 text-[7px] uppercase tracking-wide text-[#777b72]">{location}</p>
             </div>
@@ -422,18 +592,43 @@ function Inspector({ actions }: { actions: EditorActions }) {
   );
 }
 
-function Canvas({ actions, compact, variant }: { actions: EditorActions; compact: boolean; variant: VariantKey }) {
+function Canvas({ actions, compact, onViewportChange, variant, viewport }: { actions: EditorActions; compact: boolean; onViewportChange: (viewport: CanvasViewport) => void; variant: VariantKey; viewport: CanvasViewport }) {
+  const scrollViewportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const scrollViewport = scrollViewportRef.current;
+    if (!scrollViewport) return;
+
+    const recenter = () => {
+      scrollViewport.scrollTo({
+        left: Math.max(0, (scrollViewport.scrollWidth - scrollViewport.clientWidth) / 2),
+      });
+    };
+
+    recenter();
+    const observer = new ResizeObserver(recenter);
+    observer.observe(scrollViewport);
+    return () => observer.disconnect();
+  }, [viewport.height, viewport.width]);
+
   return (
     <main className="flex min-w-0 flex-1 flex-col bg-[#f7f6f4]">
-      <CanvasToolbar />
-      <div className="min-h-0 flex-1 overflow-auto px-5 py-6 sm:px-10"><div className="mx-auto mb-2 flex max-w-[972px] justify-between text-[10px] text-zinc-400"><span>Home · Desktop</span><span>1200 × 860</span></div><Artboard actions={actions} /></div>
+      <CanvasToolbar onViewportChange={onViewportChange} viewport={viewport} />
+      <div className="min-h-0 flex-1 overflow-auto" ref={scrollViewportRef}>
+        <div className="flex min-h-full w-max min-w-full justify-center px-5 py-6 sm:px-10">
+          <div className="shrink-0" style={{ width: viewport.width }}>
+            <div className="mb-2 flex justify-between text-[10px] text-zinc-400"><span>Home · {viewport.label}</span><span>{viewport.width} × {viewport.height}</span></div>
+            <Artboard actions={actions} viewport={viewport} />
+          </div>
+        </div>
+      </div>
       <footer className="flex h-7 items-center justify-between gap-3 border-t border-zinc-200 bg-white px-4 text-[9px] text-zinc-500"><span className="truncate">Home › Hero section › <span className="text-orange-600">{selectionDetails[actions.selected].label}</span></span><span className="hidden truncate sm:inline">{actions.lastAction}</span></footer>
       {(compact || variant === "c") && <div className="fixed right-4 bottom-10 z-20 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg"><QuickInsert actions={actions} rail /></div>}
     </main>
   );
 }
 
-function FormaVariant({ actions, compact, variant }: { actions: EditorActions; compact: boolean; variant: VariantKey }) {
+function FormaVariant({ actions, compact, onViewportChange, variant, viewport }: { actions: EditorActions; compact: boolean; onViewportChange: (viewport: CanvasViewport) => void; variant: VariantKey; viewport: CanvasViewport }) {
   const showNavigator = !compact && variant !== "c";
   const showInspector = !compact && variant !== "b";
   return (
@@ -441,7 +636,7 @@ function FormaVariant({ actions, compact, variant }: { actions: EditorActions; c
       <ProjectBar />
       <ResizablePanelGroup className="h-[calc(100vh-4rem)]" id={`workspace-${variant}`} onLayoutChanged={(layout, meta) => { if (meta.isUserInteraction) actions.resize("Workspace panels", layout); }} orientation="horizontal">
         {showNavigator && <><ResizablePanel defaultSize="244px" id="navigator" maxSize="380px" minSize="200px"><Navigator actions={actions} /></ResizablePanel><ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle /></>}
-        <ResizablePanel defaultSize={compact ? "100" : "60"} id="canvas" minSize={compact ? "280px" : "560px"}><Canvas actions={actions} compact={compact} variant={variant} /></ResizablePanel>
+        <ResizablePanel defaultSize={compact ? "100" : "60"} id="canvas" minSize={compact ? "280px" : "560px"}><Canvas actions={actions} compact={compact} onViewportChange={onViewportChange} variant={variant} viewport={viewport} /></ResizablePanel>
         {showInspector && <><ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle /><ResizablePanel defaultSize="288px" id="inspector" maxSize="420px" minSize="240px"><Inspector actions={actions} /></ResizablePanel></>}
       </ResizablePanelGroup>
     </div>
@@ -464,12 +659,14 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
   const [lastAction, setLastAction] = useState("Opened Forma studio");
   const [insertedBlocks, setInsertedBlocks] = useState<QuickBlock[]>([]);
   const [compact, setCompact] = useState(false);
+  const [viewport, setViewport] = useState<CanvasViewport>(canvasViewportPresets.desktop);
   const changeVariant = useCallback((variant: VariantKey) => { const next = new URLSearchParams(searchParams.toString()); next.set("variant", variant); router.replace(pathname + "?" + next.toString(), { scroll: false }); setLastAction("Switched to " + variants[variant].name); }, [pathname, router, searchParams]);
   const choose = useCallback((node: SelectedNode, source: string) => { setSelected(node); setLastAction("Selected " + selectionDetails[node].label + " from " + source); }, []);
   const addBlock = useCallback((block: QuickBlock, source: string) => { setInsertedBlocks((currentBlocks) => [...currentBlocks, block]); choose(blockTargets[block], source + " · added " + block); }, [choose]);
   const resize = useCallback((scope: string, layout: Record<string, number>) => { const dimensions = Object.entries(layout).map(([id, size]) => `${id} ${Math.round(size)}%`).join(" · "); setLastAction(`${scope} resized · ${dimensions}`); }, []);
+  const changeViewport = useCallback((nextViewport: CanvasViewport) => { setViewport(nextViewport); setLastAction(`Canvas changed to ${nextViewport.label} · ${nextViewport.width} × ${nextViewport.height}`); }, []);
   useEffect(() => { const media = window.matchMedia("(max-width: 899px)"); const sync = () => setCompact(media.matches); sync(); media.addEventListener("change", sync); return () => media.removeEventListener("change", sync); }, []);
   useEffect(() => { if (!showVariantSwitcher) return; function handleKeyDown(event: KeyboardEvent) { const target = event.target as HTMLElement | null; if (target?.closest("input, textarea, [contenteditable='true'], [role='separator']")) return; if (event.key === "ArrowLeft") changeVariant(adjacentVariant(current, -1)); if (event.key === "ArrowRight") changeVariant(adjacentVariant(current, 1)); } window.addEventListener("keydown", handleKeyDown); return () => window.removeEventListener("keydown", handleKeyDown); }, [changeVariant, current, showVariantSwitcher]);
   const actions: EditorActions = { insertedBlocks, selected, lastAction, choose, addBlock, resize };
-  return <><FormaVariant actions={actions} compact={compact} variant={current} />{showVariantSwitcher && <PrototypeSwitcher current={current} onChange={changeVariant} />}</>;
+  return <><FormaVariant actions={actions} compact={compact} onViewportChange={changeViewport} variant={current} viewport={viewport} />{showVariantSwitcher && <PrototypeSwitcher current={current} onChange={changeVariant} />}</>;
 }
