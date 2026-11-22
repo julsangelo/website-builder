@@ -2,6 +2,8 @@
 
 import {
   type DragEvent,
+  type MouseEvent,
+  type PointerEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -25,6 +27,9 @@ import {
   ImageIcon,
   LayoutTemplate,
   ListFilter,
+  Maximize2,
+  Minimize2,
+  Minus,
   Monitor,
   MoreHorizontal,
   MousePointer2,
@@ -97,21 +102,19 @@ type CanvasViewport = {
   kind: CanvasViewportKind;
   label: string;
   width: number;
-  height: number;
 };
 
 const canvasViewportPresets: Record<
   Exclude<CanvasViewportKind, "custom">,
   CanvasViewport
 > = {
-  desktop: { kind: "desktop", label: "Desktop", width: 1200, height: 860 },
-  tablet: { kind: "tablet", label: "Tablet", width: 768, height: 1024 },
-  mobile: { kind: "mobile", label: "Mobile", width: 390, height: 844 },
+  desktop: { kind: "desktop", label: "Desktop", width: 1200 },
+  tablet: { kind: "tablet", label: "Tablet", width: 768 },
+  mobile: { kind: "mobile", label: "Mobile", width: 390 },
 };
 
 const customViewportBounds = {
   width: { min: 320, max: 1920 },
-  height: { min: 480, max: 2160 },
 } as const;
 
 function adjacentVariant(current: VariantKey, direction: -1 | 1) {
@@ -346,21 +349,15 @@ function CanvasToolbar({
 }) {
   const [customOpen, setCustomOpen] = useState(false);
   const [customWidth, setCustomWidth] = useState(String(viewport.width));
-  const [customHeight, setCustomHeight] = useState(String(viewport.height));
   const parsedWidth = Number(customWidth);
-  const parsedHeight = Number(customHeight);
   const customIsValid =
     Number.isInteger(parsedWidth) &&
     parsedWidth >= customViewportBounds.width.min &&
-    parsedWidth <= customViewportBounds.width.max &&
-    Number.isInteger(parsedHeight) &&
-    parsedHeight >= customViewportBounds.height.min &&
-    parsedHeight <= customViewportBounds.height.max;
+    parsedWidth <= customViewportBounds.width.max;
 
   function choosePreset(kind: Exclude<CanvasViewportKind, "custom">) {
     const preset = canvasViewportPresets[kind];
     setCustomWidth(String(preset.width));
-    setCustomHeight(String(preset.height));
     setCustomOpen(false);
     onViewportChange(preset);
   }
@@ -371,7 +368,6 @@ function CanvasToolbar({
       kind: "custom",
       label: "Custom",
       width: parsedWidth,
-      height: parsedHeight,
     });
     setCustomOpen(false);
   }
@@ -395,8 +391,8 @@ function CanvasToolbar({
               className={
                 "size-7 " +
                 (active
-                  ? "bg-orange-100 text-orange-600 hover:bg-orange-100"
-                  : "text-zinc-500")
+                  ? "bg-orange-100 text-orange-600 hover:bg-orange-100 hover:text-orange-600"
+                  : "text-zinc-500 hover:text-zinc-900")
               }
               key={kind}
               onClick={() => choosePreset(kind)}
@@ -414,14 +410,16 @@ function CanvasToolbar({
           aria-haspopup="dialog"
           className={
             "h-7 gap-1 px-1.5 text-[11px] font-normal " +
-            (viewport.kind === "custom" ? "text-orange-600" : "text-zinc-500")
+            (viewport.kind === "custom"
+              ? "text-orange-600 hover:text-orange-600 aria-expanded:text-orange-600"
+              : "text-zinc-500 hover:text-zinc-900 aria-expanded:text-zinc-900")
           }
           onClick={() => setCustomOpen((open) => !open)}
           size="sm"
           type="button"
           variant="ghost"
         >
-          {viewport.width} × {viewport.height}
+          {viewport.width} px
           <ChevronDown className="size-3" />
         </Button>
       </div>
@@ -440,7 +438,7 @@ function CanvasToolbar({
             <p className="font-semibold text-zinc-900">Custom canvas size</p>
             <span className="text-[10px] text-zinc-400">px</span>
           </div>
-          <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+          <div>
             <label className="grid gap-1 text-[10px] text-zinc-500">
               Width
               <Input
@@ -454,27 +452,13 @@ function CanvasToolbar({
                 value={customWidth}
               />
             </label>
-            <span className="pb-2 text-zinc-400">×</span>
-            <label className="grid gap-1 text-[10px] text-zinc-500">
-              Height
-              <Input
-                aria-label="Canvas height"
-                className="h-8 text-xs"
-                inputMode="numeric"
-                max={customViewportBounds.height.max}
-                min={customViewportBounds.height.min}
-                onChange={(event) => setCustomHeight(event.target.value)}
-                type="number"
-                value={customHeight}
-              />
-            </label>
           </div>
           <p className="mt-2 text-[9px] text-zinc-400">
-            Width 320–1920 · height 480–2160
+            Width 320–1920
           </p>
           <div className="mt-3 flex justify-end gap-2">
             <Button
-              className="h-7 px-2 text-[10px]"
+              className="h-7 px-2 text-[10px] hover:text-zinc-900"
               onClick={() => setCustomOpen(false)}
               size="sm"
               type="button"
@@ -497,7 +481,7 @@ function CanvasToolbar({
   );
 }
 
-function Artboard({ actions, viewport }: { actions: EditorActions; viewport: CanvasViewport }) {
+function Artboard({ actions, artboardRef, viewport }: { actions: EditorActions; artboardRef: React.RefObject<HTMLElement | null>; viewport: CanvasViewport }) {
   const [dragging, setDragging] = useState(false);
   const selectedClass = "ring-1 ring-orange-500 ring-offset-[-1px]";
   const narrow = viewport.width < 768;
@@ -513,12 +497,13 @@ function Artboard({ actions, viewport }: { actions: EditorActions; viewport: Can
 
   return (
     <article
-      className="relative shrink-0 overflow-x-hidden overflow-y-auto bg-[#fff7ec] shadow-[0_10px_30px_rgba(74,50,25,0.09)]"
+      className="relative min-h-[640px] overflow-hidden bg-[#fff7ec] shadow-[0_10px_30px_rgba(74,50,25,0.09)] transition-[width] duration-300 ease-out motion-reduce:transition-none"
       onDragEnter={() => setDragging(true)}
       onDragLeave={() => setDragging(false)}
       onDragOver={(event) => event.preventDefault()}
       onDrop={handleDrop}
-      style={{ height: viewport.height, width: viewport.width }}
+      ref={artboardRef}
+      style={{ width: viewport.width }}
     >
       <nav className={"flex h-17 items-center justify-between bg-[#fff7ec] text-[10px] text-[#333b32] " + (narrow ? "px-7" : "px-9")}>
         <p className="text-[27px] font-semibold tracking-tight">forma.</p>
@@ -593,7 +578,30 @@ function Inspector({ actions }: { actions: EditorActions }) {
 }
 
 function Canvas({ actions, compact, onViewportChange, variant, viewport }: { actions: EditorActions; compact: boolean; onViewportChange: (viewport: CanvasViewport) => void; variant: VariantKey; viewport: CanvasViewport }) {
+  const artboardRef = useRef<HTMLElement>(null);
+  const canvasStageRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement>(null);
+  const panRef = useRef({ active: false, pointerId: -1, startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0 });
+  const [artboardHeight, setArtboardHeight] = useState(640);
+  const [isPanning, setIsPanning] = useState(false);
+  const [zoom, setZoom] = useState(100);
+  const [zoomDraft, setZoomDraft] = useState("100");
+  const [editingZoom, setEditingZoom] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const zoomScale = zoom / 100;
+  const scaledWidth = viewport.width * zoomScale;
+  const scaledHeight = artboardHeight * zoomScale;
+
+  useEffect(() => {
+    const artboard = artboardRef.current;
+    if (!artboard) return;
+
+    const measure = () => setArtboardHeight(Math.max(640, artboard.scrollHeight));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(artboard);
+    return () => observer.disconnect();
+  }, [viewport.width, actions.insertedBlocks.length]);
 
   useEffect(() => {
     const scrollViewport = scrollViewportRef.current;
@@ -608,22 +616,188 @@ function Canvas({ actions, compact, onViewportChange, variant, viewport }: { act
     recenter();
     const observer = new ResizeObserver(recenter);
     observer.observe(scrollViewport);
+    if (canvasStageRef.current) observer.observe(canvasStageRef.current);
     return () => observer.disconnect();
-  }, [viewport.height, viewport.width]);
+  }, [viewport.width, zoom]);
+
+  function applyZoom(value: number) {
+    const nextZoom = Math.min(150, Math.max(25, Math.round(value)));
+    setZoom(nextZoom);
+    setZoomDraft(String(nextZoom));
+    setEditingZoom(false);
+  }
+
+  function commitZoomDraft() {
+    const parsedZoom = Number(zoomDraft);
+    if (!zoomDraft.trim() || !Number.isFinite(parsedZoom)) {
+      setZoomDraft(String(zoom));
+      setEditingZoom(false);
+      return;
+    }
+    applyZoom(parsedZoom);
+  }
+
+  function centerCanvasHorizontally() {
+    const scrollViewport = scrollViewportRef.current;
+    if (!scrollViewport) return;
+    scrollViewport.scrollTo({
+      behavior: "smooth",
+      left: Math.max(0, (scrollViewport.scrollWidth - scrollViewport.clientWidth) / 2),
+    });
+  }
+
+  function handlePanStart(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 1) return;
+    const scrollViewport = scrollViewportRef.current;
+    if (!scrollViewport) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    panRef.current = {
+      active: true,
+      pointerId: event.pointerId,
+      scrollLeft: scrollViewport.scrollLeft,
+      scrollTop: scrollViewport.scrollTop,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+    setIsPanning(true);
+  }
+
+  function handlePanMove(event: PointerEvent<HTMLDivElement>) {
+    const pan = panRef.current;
+    const scrollViewport = scrollViewportRef.current;
+    if (!pan.active || pan.pointerId !== event.pointerId || !scrollViewport) return;
+    const deltaX = event.clientX - pan.startX;
+    const deltaY = event.clientY - pan.startY;
+    scrollViewport.scrollLeft = pan.scrollLeft - deltaX;
+    scrollViewport.scrollTop = pan.scrollTop - deltaY;
+  }
+
+  function handlePanEnd(event: PointerEvent<HTMLDivElement>) {
+    const pan = panRef.current;
+    if (!pan.active || pan.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    pan.active = false;
+    setIsPanning(false);
+  }
+
+  function handleMiddleClick(event: MouseEvent<HTMLDivElement>) {
+    if (event.button !== 1) return;
+    event.preventDefault();
+  }
+
+  function handleMiddleMouseDown(event: MouseEvent<HTMLDivElement>) {
+    if (event.button === 1 && event.detail >= 2) centerCanvasHorizontally();
+  }
 
   return (
-    <main className="flex min-w-0 flex-1 flex-col bg-[#f7f6f4]">
+    <main className={"flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#f7f6f4] " + (isFullscreen ? "fixed inset-0 z-[60] h-screen w-screen" : "")}>
       <CanvasToolbar onViewportChange={onViewportChange} viewport={viewport} />
-      <div className="min-h-0 flex-1 overflow-auto" ref={scrollViewportRef}>
-        <div className="flex min-h-full w-max min-w-full justify-center px-5 py-6 sm:px-10">
-          <div className="shrink-0" style={{ width: viewport.width }}>
-            <div className="mb-2 flex justify-between text-[10px] text-zinc-400"><span>Home · {viewport.label}</span><span>{viewport.width} × {viewport.height}</span></div>
-            <Artboard actions={actions} viewport={viewport} />
+      <div
+        className={"min-h-0 flex-1 overflow-auto overscroll-contain " + (isPanning ? "cursor-grabbing select-none" : "")}
+        onAuxClick={handleMiddleClick}
+        onMouseDown={handleMiddleMouseDown}
+        onPointerCancel={handlePanEnd}
+        onPointerDown={handlePanStart}
+        onPointerMove={handlePanMove}
+        onPointerUp={handlePanEnd}
+        ref={scrollViewportRef}
+      >
+        <div className="box-border flex min-h-full w-max min-w-full justify-center px-5 py-6 sm:px-10">
+          <div className="my-auto shrink-0 transition-[width,height] duration-300 ease-out motion-reduce:transition-none" ref={canvasStageRef} style={{ height: scaledHeight + 20, width: scaledWidth }}>
+            <div className="mb-2 flex shrink-0 justify-between text-[10px] text-zinc-400"><span>Home · {viewport.label}</span><span>{viewport.width} px</span></div>
+            <div className="relative overflow-hidden transition-[width,height] duration-300 ease-out motion-reduce:transition-none" style={{ height: scaledHeight, width: scaledWidth }}>
+              <div className="absolute top-0 left-0 origin-top-left transition-transform duration-300 ease-out will-change-transform motion-reduce:transition-none" style={{ transform: `scale(${zoomScale})`, width: viewport.width }}>
+                <Artboard actions={actions} artboardRef={artboardRef} viewport={viewport} />
+              </div>
+            </div>
           </div>
         </div>
       </div>
-      <footer className="flex h-7 items-center justify-between gap-3 border-t border-zinc-200 bg-white px-4 text-[9px] text-zinc-500"><span className="truncate">Home › Hero section › <span className="text-orange-600">{selectionDetails[actions.selected].label}</span></span><span className="hidden truncate sm:inline">{actions.lastAction}</span></footer>
-      {(compact || variant === "c") && <div className="fixed right-4 bottom-10 z-20 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg"><QuickInsert actions={actions} rail /></div>}
+      <footer className="sticky bottom-0 z-20 flex h-11 shrink-0 items-center justify-between gap-3 border-t border-zinc-200 bg-white px-4 text-[9px] text-zinc-500">
+        <span className="truncate">Home › Hero section › <span className="text-orange-600">{selectionDetails[actions.selected].label}</span></span>
+        <div className="flex items-center gap-0.5">
+          <Button
+            aria-label="Decrease canvas zoom"
+            className="size-7 text-zinc-500 hover:bg-zinc-100"
+            disabled={zoom <= 25}
+            onClick={() => applyZoom(zoom - 10)}
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          >
+            <Minus className="size-3" />
+          </Button>
+          {editingZoom ? (
+            <div className="relative h-7 w-12">
+              <Input
+                aria-label="Canvas zoom percentage"
+                autoFocus
+                className="h-7 w-12 rounded-md border-orange-300 px-1 pr-3 text-center text-[10px] shadow-none"
+                inputMode="numeric"
+                onBlur={commitZoomDraft}
+                onChange={(event) => setZoomDraft(event.target.value)}
+                onFocus={(event) => event.currentTarget.select()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setZoomDraft(String(zoom));
+                    setEditingZoom(false);
+                  }
+                }}
+                type="text"
+                value={zoomDraft}
+              />
+              <span className="pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 text-[9px] text-zinc-400">%</span>
+            </div>
+          ) : (
+            <Button
+              aria-label={`Canvas zoom ${zoom} percent. Click to edit`}
+              className="h-7 w-12 px-1 text-[10px] font-normal text-zinc-700 hover:bg-zinc-100"
+              onClick={() => {
+                setZoomDraft(String(zoom));
+                setEditingZoom(true);
+              }}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <span aria-live="polite">{zoom}%</span>
+            </Button>
+          )}
+          <Button
+            aria-label="Increase canvas zoom"
+            className="size-7 text-zinc-500 hover:bg-zinc-100"
+            disabled={zoom >= 150}
+            onClick={() => applyZoom(zoom + 10)}
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          >
+            <Plus className="size-3" />
+          </Button>
+          <Separator className="mx-1 h-4" orientation="vertical" />
+          <Button
+            aria-label={isFullscreen ? "Exit canvas full screen" : "Enter canvas full screen"}
+            aria-pressed={isFullscreen}
+            className="size-7 text-zinc-500 hover:bg-zinc-100"
+            onClick={() => setIsFullscreen((fullscreen) => !fullscreen)}
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          >
+            {isFullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+          </Button>
+        </div>
+      </footer>
+      {(compact || variant === "c") && <div className="fixed right-4 bottom-14 z-20 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg"><QuickInsert actions={actions} rail /></div>}
     </main>
   );
 }
@@ -632,13 +806,15 @@ function FormaVariant({ actions, compact, onViewportChange, variant, viewport }:
   const showNavigator = !compact && variant !== "c";
   const showInspector = !compact && variant !== "b";
   return (
-    <div className="h-screen overflow-hidden bg-white text-zinc-900">
+    <div className="builder-light-theme h-screen overflow-hidden bg-white text-zinc-900">
       <ProjectBar />
-      <ResizablePanelGroup className="h-[calc(100vh-4rem)]" id={`workspace-${variant}`} onLayoutChanged={(layout, meta) => { if (meta.isUserInteraction) actions.resize("Workspace panels", layout); }} orientation="horizontal">
-        {showNavigator && <><ResizablePanel defaultSize="244px" id="navigator" maxSize="380px" minSize="200px"><Navigator actions={actions} /></ResizablePanel><ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle /></>}
-        <ResizablePanel defaultSize={compact ? "100" : "60"} id="canvas" minSize={compact ? "280px" : "560px"}><Canvas actions={actions} compact={compact} onViewportChange={onViewportChange} variant={variant} viewport={viewport} /></ResizablePanel>
-        {showInspector && <><ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle /><ResizablePanel defaultSize="288px" id="inspector" maxSize="420px" minSize="240px"><Inspector actions={actions} /></ResizablePanel></>}
-      </ResizablePanelGroup>
+      <div className="h-[calc(100vh-4rem)] min-h-0 overflow-hidden">
+        <ResizablePanelGroup className="h-full min-h-0" id={`workspace-${variant}`} onLayoutChanged={(layout, meta) => { if (meta.isUserInteraction) actions.resize("Workspace panels", layout); }} orientation="horizontal">
+          {showNavigator && <><ResizablePanel defaultSize="244px" id="navigator" maxSize="380px" minSize="200px"><Navigator actions={actions} /></ResizablePanel><ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle /></>}
+          <ResizablePanel defaultSize={compact ? "100" : "60"} id="canvas" minSize={compact ? "280px" : "560px"}><Canvas actions={actions} compact={compact} onViewportChange={onViewportChange} variant={variant} viewport={viewport} /></ResizablePanel>
+          {showInspector && <><ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle /><ResizablePanel defaultSize="288px" id="inspector" maxSize="420px" minSize="240px"><Inspector actions={actions} /></ResizablePanel></>}
+        </ResizablePanelGroup>
+      </div>
     </div>
   );
 }
@@ -646,7 +822,7 @@ function FormaVariant({ actions, compact, onViewportChange, variant, viewport }:
 function PrototypeSwitcher({ current, onChange }: { current: VariantKey; onChange: (variant: VariantKey) => void }) {
   const previous = adjacentVariant(current, -1);
   const next = adjacentVariant(current, 1);
-  return <div className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-zinc-300 bg-white/95 px-2 py-1.5 shadow-xl backdrop-blur"><Button aria-label="Previous prototype variation" className="size-7" onClick={() => onChange(previous)} size="icon-sm" variant="ghost"><ArrowLeft className="size-3.5" /></Button><div className="min-w-44 text-center leading-tight"><p className="text-xs font-semibold">{current.toUpperCase()} · {variants[current].name}</p><p className="text-[10px] text-zinc-500">{variants[current].description}</p></div><Button aria-label="Next prototype variation" className="size-7" onClick={() => onChange(next)} size="icon-sm" variant="ghost"><ArrowRight className="size-3.5" /></Button></div>;
+  return <div className="fixed bottom-12 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-zinc-300 bg-white/95 px-2 py-1.5 shadow-xl backdrop-blur"><Button aria-label="Previous prototype variation" className="size-7" onClick={() => onChange(previous)} size="icon-sm" variant="ghost"><ArrowLeft className="size-3.5" /></Button><div className="min-w-44 text-center leading-tight"><p className="text-xs font-semibold">{current.toUpperCase()} · {variants[current].name}</p><p className="text-[10px] text-zinc-500">{variants[current].description}</p></div><Button aria-label="Next prototype variation" className="size-7" onClick={() => onChange(next)} size="icon-sm" variant="ghost"><ArrowRight className="size-3.5" /></Button></div>;
 }
 
 export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwitcher?: boolean }) {
@@ -664,7 +840,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
   const choose = useCallback((node: SelectedNode, source: string) => { setSelected(node); setLastAction("Selected " + selectionDetails[node].label + " from " + source); }, []);
   const addBlock = useCallback((block: QuickBlock, source: string) => { setInsertedBlocks((currentBlocks) => [...currentBlocks, block]); choose(blockTargets[block], source + " · added " + block); }, [choose]);
   const resize = useCallback((scope: string, layout: Record<string, number>) => { const dimensions = Object.entries(layout).map(([id, size]) => `${id} ${Math.round(size)}%`).join(" · "); setLastAction(`${scope} resized · ${dimensions}`); }, []);
-  const changeViewport = useCallback((nextViewport: CanvasViewport) => { setViewport(nextViewport); setLastAction(`Canvas changed to ${nextViewport.label} · ${nextViewport.width} × ${nextViewport.height}`); }, []);
+  const changeViewport = useCallback((nextViewport: CanvasViewport) => { setViewport(nextViewport); setLastAction(`Canvas changed to ${nextViewport.label} · ${nextViewport.width} px`); }, []);
   useEffect(() => { const media = window.matchMedia("(max-width: 899px)"); const sync = () => setCompact(media.matches); sync(); media.addEventListener("change", sync); return () => media.removeEventListener("change", sync); }, []);
   useEffect(() => { if (!showVariantSwitcher) return; function handleKeyDown(event: KeyboardEvent) { const target = event.target as HTMLElement | null; if (target?.closest("input, textarea, [contenteditable='true'], [role='separator']")) return; if (event.key === "ArrowLeft") changeVariant(adjacentVariant(current, -1)); if (event.key === "ArrowRight") changeVariant(adjacentVariant(current, 1)); } window.addEventListener("keydown", handleKeyDown); return () => window.removeEventListener("keydown", handleKeyDown); }, [changeVariant, current, showVariantSwitcher]);
   const actions: EditorActions = { insertedBlocks, selected, lastAction, choose, addBlock, resize };
