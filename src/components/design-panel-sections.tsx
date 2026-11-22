@@ -75,8 +75,7 @@ export function PagesList() {
                       className={cn(
                         "mr-1 size-6 shrink-0 opacity-0 text-muted-foreground transition-colors hover:text-foreground",
                         "group-hover/row:opacity-100 group-hover/row:text-foreground",
-                        "group-data-[active=true]/row:text-primary",
-                        "group-data-[active=true]/row:opacity-100",
+                                    "group-data-[active=true]/row:opacity-100",
                         "data-[state=open]:opacity-100"
                       )}
                     />
@@ -211,7 +210,6 @@ function LayerRow({
           className={cn(
             "size-6 shrink-0 opacity-0 text-muted-foreground transition-colors hover:text-foreground",
             "group-hover/row:opacity-100 group-hover/row:text-foreground",
-            "group-data-[active=true]/row:text-primary",
             "group-data-[active=true]/row:opacity-100",
             isHidden && "opacity-100"
           )}
