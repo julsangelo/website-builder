@@ -11,23 +11,23 @@ import {
   useRef,
   useState,
 } from "react";
-import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   type LucideIcon,
   ArrowLeft,
   ArrowRight,
-  ArrowUpRight,
   ChevronDown,
   CloudCheck,
   Code2,
   FileText,
+  Globe2,
   GripVertical,
   HelpCircle,
   Home,
   ImageIcon,
   LayoutTemplate,
   ListFilter,
+  LockKeyhole,
   Maximize2,
   Minimize2,
   Minus,
@@ -38,6 +38,7 @@ import {
   Play,
   Plus,
   Redo2,
+  RefreshCw,
   Search,
   Settings2,
   Smartphone,
@@ -48,7 +49,6 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   ResizableHandle,
@@ -289,11 +289,11 @@ function QuickInsert({ actions, rail = false }: { actions: EditorActions; rail?:
 function Navigator({ actions }: { actions: EditorActions }) {
   return (
     <aside className="flex h-full w-full min-w-0 flex-col bg-white">
-      <div className="flex h-12 items-center gap-5 border-b border-zinc-200 px-4 text-xs">
-        <Tabs className="h-full gap-0" defaultValue="design">
-          <TabsList className="h-full gap-5 p-0" variant="line">
-            <TabsTrigger className="h-full flex-none px-0 text-xs data-active:text-zinc-950 after:bottom-0 after:bg-orange-600" value="design">Design</TabsTrigger>
-            <TabsTrigger className="h-full flex-none px-0 text-xs after:bottom-0 after:bg-orange-600" value="assets">Assets</TabsTrigger>
+      <div className="flex h-12 items-center border-b border-zinc-200 px-4 text-xs">
+        <Tabs className="!h-full w-40 !gap-0" defaultValue="design">
+          <TabsList className="!grid !h-full !w-full grid-cols-2 !gap-0 !p-0" variant="line">
+            <TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs data-active:text-zinc-950 after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="design">Design</TabsTrigger>
+            <TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="assets">Assets</TabsTrigger>
           </TabsList>
         </Tabs>
         <Search className="ml-auto size-4 text-zinc-500" />
@@ -501,8 +501,9 @@ function CanvasToolbar({
 
 function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }: { actions: EditorActions; artboardHeight: number; artboardRef: React.RefObject<HTMLElement | null>; isResizing: boolean; viewport: CanvasViewport }) {
   const [dragging, setDragging] = useState(false);
-  const selectedClass = "ring-1 ring-orange-500 ring-offset-[-1px]";
-  const narrow = viewport.width < 768;
+  const compactPreview = viewport.width < 768;
+  const narrowPreview = viewport.width < 510;
+  const browserHeaderHeight = compactPreview ? 48 : 64;
 
   function handleDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault();
@@ -515,7 +516,7 @@ function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }
 
   return (
     <article
-      className={"relative min-h-[640px] overflow-hidden bg-[#fff7ec] shadow-[0_10px_30px_rgba(74,50,25,0.09)] transition-[width] ease-out motion-reduce:transition-none " + (isResizing ? "duration-0" : "duration-300")}
+      className={"relative min-h-[640px] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_12px_30px_rgba(24,24,27,0.08)] transition-[width] ease-out motion-reduce:transition-none " + (isResizing ? "duration-0" : "duration-300")}
       onDragEnter={() => setDragging(true)}
       onDragLeave={() => setDragging(false)}
       onDragOver={(event) => event.preventDefault()}
@@ -523,47 +524,23 @@ function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }
       ref={artboardRef}
       style={{ minHeight: artboardHeight, width: viewport.width }}
     >
-      <nav className={"flex h-17 items-center justify-between bg-[#fff7ec] text-[10px] text-[#333b32] " + (narrow ? "px-7" : "px-9")}>
-        <p className="text-[27px] font-semibold tracking-tight">forma.</p>
-        <div className={(narrow ? "hidden" : "flex") + " items-center gap-6"}><span>Our studio</span><span>Selected work</span><span>Journal</span><span className="flex items-center gap-1">Let&apos;s talk <ArrowUpRight className="size-3" /></span></div>
-      </nav>
-      <section className={"grid min-h-[360px] " + (narrow ? "grid-cols-1" : "grid-cols-2")}>
-        <div className={"relative flex flex-col justify-center py-10 " + (narrow ? "px-7 " : "px-9 ") + (actions.selected === "section" ? selectedClass : "")}>
-          <Button className="mb-3 h-auto w-fit gap-2 rounded-none p-0 text-[9px] font-normal uppercase tracking-wide text-[#4a5144] hover:bg-transparent" onClick={() => actions.choose("section", "artboard")} variant="ghost"><span className="size-1 rounded-full bg-[#333b32]" /> Interiors with intention</Button>
-          <Button className={"relative h-auto w-fit justify-start rounded-none p-0 text-left font-normal hover:bg-transparent " + (actions.selected === "heading" ? selectedClass : "")} onClick={() => actions.choose("heading", "artboard")} variant="ghost">
-            {actions.selected === "heading" && <span className="absolute -top-6 left-0 rounded-t bg-orange-600 px-2 py-1 text-[10px] font-sans text-white">T Hero heading</span>}
-            <span className={(narrow ? "text-5xl" : "text-6xl") + " font-semibold leading-[0.84] tracking-[-0.05em] text-[#333b32]"}>Spaces for<br />slower living.</span>
-          </Button>
-          <p className="mt-6 max-w-xs text-[10px] leading-4 text-[#6f746c]">Thoughtful interiors. Natural materials. A quieter kind of luxury, made for the way you live.</p>
-          <Button className="mt-5 w-fit rounded-none bg-[#333b32] px-4 text-[10px] text-white hover:bg-[#454d43]" size="sm">Explore our work <ArrowUpRight className="size-3" /></Button>
-          <p className="mt-7 text-[8px] uppercase tracking-wide text-[#747970]">Based in Copenhagen · working everywhere</p>
-        </div>
-        <Button aria-label="Select hero image" className={"relative h-auto min-h-70 w-full overflow-hidden rounded-none p-0 text-left hover:bg-transparent " + (actions.selected === "hero-image" ? selectedClass : "")} onClick={() => actions.choose("hero-image", "artboard")} type="button" variant="ghost">
-          <Image alt="Warm living room from the reference design" className="object-cover" fill preload sizes="(max-width: 768px) 100vw, 486px" src="/prototype/forma-hero.png" />
-          {actions.selected === "hero-image" && <span className="absolute right-2 bottom-2 rounded bg-orange-600 px-2 py-1 text-[10px] text-white">Image</span>}
-        </Button>
-      </section>
-      <section className={"relative border-t-2 border-orange-500 py-6 " + (narrow ? "px-7 " : "px-9 ") + (actions.selected === "gallery" ? selectedClass : "")}>
-        <div className="mb-5 flex items-center justify-between gap-3">
-          <Button className="h-auto justify-start rounded-none p-0 text-left text-2xl font-semibold tracking-[-0.03em] text-[#333b32] hover:bg-transparent" onClick={() => actions.choose("gallery", "artboard")} variant="ghost">Considered spaces, lasting feeling.</Button>
-          <span className="text-[9px] text-[#6f746c]">Selected work / 01—03</span>
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            ["/prototype/forma-project-1.png", "The Frederiksberg residence", "Residential · Copenhagen"],
-            ["/prototype/forma-project-2.png", "A softer way to gather", "Residential · Copenhagen"],
-            ["/prototype/forma-project-3.png", "A retreat by the coast", "Residential · North sea"],
-          ].map(([source, title, location]) => (
-            <div key={title}>
-              <Image alt="Interior project" className={(narrow ? "h-20" : "h-31") + " w-full object-cover"} height={125} sizes="(max-width: 768px) 30vw, 288px" src={source} width={288} />
-              <p className="mt-1.5 truncate text-[10px] font-medium text-[#333b32]">{title}</p>
-              <p className="mt-0.5 text-[7px] uppercase tracking-wide text-[#777b72]">{location}</p>
-            </div>
-          ))}
+      <header className={(compactPreview ? "h-12 px-4 " : "h-16 px-6 ") + "relative flex items-center border-b border-zinc-200 bg-zinc-50 text-zinc-400"}>
+        <div className={"flex items-center " + (compactPreview ? "gap-1" : "gap-1.5")}><span className={(compactPreview ? "size-2 " : "size-3 ") + "rounded-full bg-red-400"} /><span className={(compactPreview ? "size-2 " : "size-3 ") + "rounded-full bg-amber-400"} /><span className={(compactPreview ? "size-2 " : "size-3 ") + "rounded-full bg-emerald-400"} /></div>
+        <div className={(compactPreview ? "ml-5 gap-2 " : "ml-7 gap-3 ") + "flex items-center"}><ArrowLeft className={compactPreview ? "size-3" : "size-4"} /><ArrowRight className={compactPreview ? "size-3" : "size-4"} /><RefreshCw className={compactPreview ? "size-3" : "size-4"} /></div>
+        {narrowPreview ? (
+          <div className="ml-3 flex h-7 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md border border-zinc-200 bg-white text-[9px] text-zinc-400 shadow-sm"><LockKeyhole className="size-3 shrink-0" /> <span className="truncate">yourwebsite.com</span></div>
+        ) : (
+          <div className={(compactPreview ? "h-7 w-[48%] gap-1.5 text-[9px] " : "h-8 w-[42%] gap-2 text-xs ") + "absolute top-1/2 left-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-400 shadow-sm"}><LockKeyhole className={compactPreview ? "size-3" : "size-3.5"} /> yourwebsite.com</div>
+        )}
+      </header>
+      <section className="grid place-items-center bg-white px-8 text-center" style={{ minHeight: artboardHeight - browserHeaderHeight }}>
+        <div>
+          <div className={(compactPreview ? "mb-3 size-9 " : "mb-5 size-12 ") + "mx-auto grid place-items-center rounded-xl bg-zinc-100 text-zinc-500"}><Globe2 className={compactPreview ? "size-4" : "size-6"} /></div>
+          <p className={(compactPreview ? "text-base " : "text-xl ") + "font-medium text-zinc-900"}>Your website preview</p>
+          <p className={(compactPreview ? "mt-1.5 text-xs " : "mt-3 text-base ") + "text-zinc-500"}>Your page will appear here as you build it.</p>
         </div>
       </section>
-      {actions.insertedBlocks.length > 0 && <section className="border-t border-orange-200 bg-white/50 px-7 py-6 sm:px-9"><p className="mb-3 text-[9px] font-semibold uppercase tracking-widest text-orange-700">Added blocks</p><div className="grid gap-3 sm:grid-cols-2">{actions.insertedBlocks.map((block, index) => { const blockInfo = quickBlocks.find((candidate) => candidate.id === block)!; const BlockIcon = blockInfo.icon; return <Card className="border-orange-200 bg-white shadow-none" key={`${block}-${index}`}><CardContent className="flex min-h-24 items-center justify-center p-4">{block === "button" ? <Button className="bg-[#333b32] text-white hover:bg-[#454d43]">New button <ArrowUpRight className="size-3" /></Button> : block === "heading" ? <h3 className="text-2xl font-semibold text-[#333b32]">New heading</h3> : block === "image" ? <div className="grid place-items-center gap-2 text-xs text-zinc-500"><BlockIcon className="size-6" />Image block</div> : <div className="flex items-center gap-2 text-sm font-medium text-[#333b32]"><BlockIcon className="size-4" />New section</div>}</CardContent></Card>; })}</div></section>}
-      {dragging && <div className="absolute inset-3 grid place-items-center border-2 border-dashed border-orange-500 bg-orange-50/90 text-sm font-medium text-orange-700">Drop to add a block</div>}
+      {dragging && <div className="absolute inset-x-3 top-14 bottom-3 grid place-items-center border-2 border-dashed border-orange-500 bg-orange-50/90 text-sm font-medium text-orange-700">Drop to add a block</div>}
     </article>
   );
 }
@@ -581,7 +558,7 @@ function Inspector({ actions }: { actions: EditorActions }) {
   const SelectionIcon = selection.icon;
   return (
     <aside className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-white">
-      <div className="flex h-12 items-center border-b border-zinc-200 px-4 text-xs"><Tabs className="h-full w-36 gap-0" defaultValue="style"><TabsList className="h-full w-full gap-0 p-0" variant="line"><TabsTrigger className="h-full flex-1 justify-center px-0 text-xs data-active:text-zinc-950 after:bottom-0 after:h-0.5 after:bg-orange-600" value="style">Style</TabsTrigger><TabsTrigger className="h-full flex-1 justify-center px-0 text-xs after:bottom-0 after:h-0.5 after:bg-orange-600" value="settings">Settings</TabsTrigger></TabsList></Tabs><MoreHorizontal className="ml-auto size-4 text-zinc-500" /></div>
+      <div className="flex h-12 items-center border-b border-zinc-200 px-4 text-xs"><Tabs className="!h-full w-40 !gap-0" defaultValue="style"><TabsList className="!grid !h-full !w-full grid-cols-2 !gap-0 !p-0" variant="line"><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs data-active:text-zinc-950 after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="style">Style</TabsTrigger><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="settings">Settings</TabsTrigger></TabsList></Tabs><MoreHorizontal className="ml-auto size-4 text-zinc-500" /></div>
       <ResizablePanelGroup className="min-h-0 flex-1" id="inspector-sections" onLayoutChanged={(layout, meta) => { if (meta.isUserInteraction) actions.resize("Inspector sections", layout); }} orientation="vertical">
         <ResizablePanel defaultSize="18" id="selection" minSize="120px"><ScrollArea className="h-full"><div className="border-b border-zinc-200 p-4"><div className="flex items-center gap-3"><div className="grid size-8 place-items-center rounded-md bg-orange-100 text-orange-600"><SelectionIcon className="size-4" /></div><div><p className="text-xs font-semibold">{selection.label}</p><p className="text-[10px] text-zinc-500">{selection.layer}</p></div></div><Button className="mt-3 w-full justify-between border-violet-300 bg-violet-50 text-[10px] text-violet-700 hover:bg-violet-100" size="sm" variant="outline">✦ {selection.label.toLowerCase().replace(" ", "-")} <ChevronDown className="size-3" /></Button><p className="mt-2 text-[9px] text-zinc-500">Inheriting 2 styles on Desktop</p></div></ScrollArea></ResizablePanel>
         <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
