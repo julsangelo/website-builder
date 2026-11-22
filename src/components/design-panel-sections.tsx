@@ -40,7 +40,7 @@ export function PagesList() {
   const [activeId, setActiveId] = React.useState("home");
 
   return (
-    <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-scrollbar]]:hidden">
+    <ScrollArea className="min-h-0 flex-1">
       <ul className="flex flex-col gap-0.5 px-3">
         {pages.map((page) => {
           const isActive = page.id === activeId;
@@ -60,7 +60,7 @@ export function PagesList() {
                 type="button"
                 variant="ghost"
                 onClick={() => setActiveId(page.id)}
-                className="group/layer-label h-auto min-w-0 flex-1 justify-start gap-2 rounded-none px-2 py-1.5 text-left text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
+                className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-none px-2 py-1.5 text-left text-xs font-normal hover:bg-transparent"
               >
                 <Icon className="size-4 shrink-0" />
                 <span className="truncate">{page.name}</span>
@@ -197,7 +197,7 @@ function LayerRow({
           type="button"
           variant="ghost"
           onClick={() => onSelect(layer.id)}
-          className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-none py-1.5 text-left text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
+          className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-none py-1.5 text-left text-xs font-normal hover:bg-transparent"
         >
           <Icon className="size-4 shrink-0" />
           <span className="truncate">{layer.name}</span>
@@ -254,7 +254,7 @@ export function LayersTree() {
   const [hidden, setHidden] = React.useState<Set<string>>(() => new Set());
 
   return (
-    <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-scrollbar]]:hidden">
+    <ScrollArea className="min-h-0 flex-1">
       <ul className="flex flex-col gap-0.5 px-3">
         {layers.map((layer) => (
           <LayerRow
