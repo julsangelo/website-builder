@@ -2,6 +2,7 @@
 
 import {
   type DragEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
   type PointerEvent,
   type ReactNode,
@@ -54,6 +55,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -102,20 +104,25 @@ type CanvasViewport = {
   kind: CanvasViewportKind;
   label: string;
   width: number;
+  zoomBaseline: number;
 };
+
+const desktopCanvasScaleAtHundredPercent = 0.6;
 
 const canvasViewportPresets: Record<
   Exclude<CanvasViewportKind, "custom">,
   CanvasViewport
 > = {
-  desktop: { kind: "desktop", label: "Desktop", width: 1200 },
-  tablet: { kind: "tablet", label: "Tablet", width: 768 },
-  mobile: { kind: "mobile", label: "Mobile", width: 390 },
+  desktop: { kind: "desktop", label: "Desktop", width: 1920, zoomBaseline: desktopCanvasScaleAtHundredPercent },
+  tablet: { kind: "tablet", label: "Tablet", width: 768, zoomBaseline: 1 },
+  mobile: { kind: "mobile", label: "Mobile", width: 400, zoomBaseline: 1 },
 };
 
 const customViewportBounds = {
   width: { min: 320, max: 1920 },
 } as const;
+
+const defaultCanvasHeight = 1080;
 
 function adjacentVariant(current: VariantKey, direction: -1 | 1) {
   const index = variantKeys.indexOf(current);
@@ -300,43 +307,121 @@ function Navigator({ actions }: { actions: EditorActions }) {
         orientation="vertical"
       >
         <ResizablePanel defaultSize="22" id="pages" minSize="120px">
-          <section className="h-full overflow-auto p-3">
-            <div className="mb-2 flex items-center justify-between px-1 text-xs font-semibold">
-              Pages <Plus className="size-3.5 text-zinc-500" />
-            </div>
-            <SidebarItem active><Home className="size-3.5" /> Home <MoreHorizontal className="ml-auto size-3.5" /></SidebarItem>
-            <SidebarItem><FileText className="size-3.5" /> Our studio</SidebarItem>
-            <SidebarItem><FileText className="size-3.5" /> Selected work</SidebarItem>
-            <SidebarItem><FileText className="size-3.5" /> Contact</SidebarItem>
-          </section>
+          <ScrollArea className="h-full">
+            <section className="p-3">
+              <div className="mb-2 flex items-center justify-between px-1 text-xs font-semibold">
+                Pages <Plus className="size-3.5 text-zinc-500" />
+              </div>
+              <SidebarItem active><Home className="size-3.5" /> Home <MoreHorizontal className="ml-auto size-3.5" /></SidebarItem>
+              <SidebarItem><FileText className="size-3.5" /> Our studio</SidebarItem>
+              <SidebarItem><FileText className="size-3.5" /> Selected work</SidebarItem>
+              <SidebarItem><FileText className="size-3.5" /> Contact</SidebarItem>
+            </section>
+          </ScrollArea>
         </ResizablePanel>
         <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
         <ResizablePanel defaultSize="43" id="layers" minSize="160px">
-          <section className="h-full overflow-auto p-3">
-            <div className="mb-2 flex items-center justify-between px-1 text-xs font-semibold">
-              Layers <ListFilter className="size-3.5 text-zinc-500" />
-            </div>
-            <SidebarItem onClick={() => actions.choose("section", "layer tree")}><ChevronDown className="size-3" /><PanelTop className="size-3.5" /> Navigation</SidebarItem>
-            <SidebarItem onClick={() => actions.choose("section", "layer tree")}><ChevronDown className="size-3" /><LayoutTemplate className="size-3.5" /> Hero section</SidebarItem>
-            <SidebarItem indent={1} onClick={() => actions.choose("section", "layer tree")}><ChevronDown className="size-3" /><LayoutTemplate className="size-3.5" /> Content</SidebarItem>
-            <SidebarItem indent={2}><Type className="size-3.5" /> Eyebrow</SidebarItem>
-            <SidebarItem active={actions.selected === "heading"} indent={2} onClick={() => actions.choose("heading", "layer tree")}><Type className="size-3.5" /> Hero heading</SidebarItem>
-            <SidebarItem indent={2}><Type className="size-3.5" /> Description</SidebarItem>
-            <SidebarItem active={actions.selected === "hero-image"} indent={1} onClick={() => actions.choose("hero-image", "layer tree")}><ImageIcon className="size-3.5" /> Hero image</SidebarItem>
-            <SidebarItem active={actions.selected === "gallery"} onClick={() => actions.choose("gallery", "layer tree")}><ChevronDown className="size-3" /><LayoutTemplate className="size-3.5" /> Selected spaces</SidebarItem>
-          </section>
+          <ScrollArea className="h-full">
+            <section className="p-3">
+              <div className="mb-2 flex items-center justify-between px-1 text-xs font-semibold">
+                Layers <ListFilter className="size-3.5 text-zinc-500" />
+              </div>
+              <SidebarItem onClick={() => actions.choose("section", "layer tree")}><ChevronDown className="size-3" /><PanelTop className="size-3.5" /> Navigation</SidebarItem>
+              <SidebarItem onClick={() => actions.choose("section", "layer tree")}><ChevronDown className="size-3" /><LayoutTemplate className="size-3.5" /> Hero section</SidebarItem>
+              <SidebarItem indent={1} onClick={() => actions.choose("section", "layer tree")}><ChevronDown className="size-3" /><LayoutTemplate className="size-3.5" /> Content</SidebarItem>
+              <SidebarItem indent={2}><Type className="size-3.5" /> Eyebrow</SidebarItem>
+              <SidebarItem active={actions.selected === "heading"} indent={2} onClick={() => actions.choose("heading", "layer tree")}><Type className="size-3.5" /> Hero heading</SidebarItem>
+              <SidebarItem indent={2}><Type className="size-3.5" /> Description</SidebarItem>
+              <SidebarItem active={actions.selected === "hero-image"} indent={1} onClick={() => actions.choose("hero-image", "layer tree")}><ImageIcon className="size-3.5" /> Hero image</SidebarItem>
+              <SidebarItem active={actions.selected === "gallery"} onClick={() => actions.choose("gallery", "layer tree")}><ChevronDown className="size-3" /><LayoutTemplate className="size-3.5" /> Selected spaces</SidebarItem>
+            </section>
+          </ScrollArea>
         </ResizablePanel>
         <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
         <ResizablePanel defaultSize="35" id="quick-insert" minSize="190px">
-          <div className="h-full overflow-auto">
+          <ScrollArea className="h-full">
             <QuickInsert actions={actions} />
-          </div>
+          </ScrollArea>
         </ResizablePanel>
       </ResizablePanelGroup>
       <div className="flex items-center gap-2 border-t border-zinc-200 px-4 py-3 text-[10px] text-zinc-500">
         <HelpCircle className="size-3.5" /> Help & keyboard shortcuts
       </div>
     </aside>
+  );
+}
+
+function CustomViewportForm({ onCancel, onViewportChange, viewport }: { onCancel: () => void; onViewportChange: (viewport: CanvasViewport) => void; viewport: CanvasViewport }) {
+  const [customWidth, setCustomWidth] = useState(String(viewport.width));
+  const parsedWidth = Number(customWidth);
+  const customIsValid =
+    Number.isInteger(parsedWidth) &&
+    parsedWidth >= customViewportBounds.width.min &&
+    parsedWidth <= customViewportBounds.width.max;
+
+  function applyCustomViewport() {
+    if (!customIsValid) return;
+    onViewportChange({
+      kind: "custom",
+      label: "Custom",
+      width: parsedWidth,
+      zoomBaseline: viewport.zoomBaseline,
+    });
+    onCancel();
+  }
+
+  return (
+    <form
+      aria-label="Custom canvas size"
+      className="absolute top-11 left-1/2 z-30 w-64 -translate-x-1/2 rounded-lg border border-zinc-200 bg-white p-3 shadow-xl"
+      onSubmit={(event) => {
+        event.preventDefault();
+        applyCustomViewport();
+      }}
+      role="dialog"
+    >
+      <div className="mb-2 flex items-center justify-between">
+        <p className="font-semibold text-zinc-900">Custom canvas size</p>
+        <span className="text-[10px] text-zinc-400">px</span>
+      </div>
+      <div>
+        <label className="grid gap-1 text-[10px] text-zinc-500">
+          Width
+          <Input
+            aria-label="Canvas width"
+            className="h-8 text-xs"
+            inputMode="numeric"
+            max={customViewportBounds.width.max}
+            min={customViewportBounds.width.min}
+            onChange={(event) => setCustomWidth(event.target.value)}
+            type="number"
+            value={customWidth}
+          />
+        </label>
+      </div>
+      <p className="mt-2 text-[9px] text-zinc-400">
+        Width 320–1920
+      </p>
+      <div className="mt-3 flex justify-end gap-2">
+        <Button
+          className="h-7 px-2 text-[10px] hover:text-zinc-900"
+          onClick={onCancel}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          Cancel
+        </Button>
+        <Button
+          className="h-7 bg-orange-600 px-3 text-[10px] text-white hover:bg-orange-700"
+          disabled={!customIsValid}
+          size="sm"
+          type="submit"
+        >
+          Apply
+        </Button>
+      </div>
+    </form>
   );
 }
 
@@ -348,28 +433,11 @@ function CanvasToolbar({
   viewport: CanvasViewport;
 }) {
   const [customOpen, setCustomOpen] = useState(false);
-  const [customWidth, setCustomWidth] = useState(String(viewport.width));
-  const parsedWidth = Number(customWidth);
-  const customIsValid =
-    Number.isInteger(parsedWidth) &&
-    parsedWidth >= customViewportBounds.width.min &&
-    parsedWidth <= customViewportBounds.width.max;
 
   function choosePreset(kind: Exclude<CanvasViewportKind, "custom">) {
     const preset = canvasViewportPresets[kind];
-    setCustomWidth(String(preset.width));
     setCustomOpen(false);
     onViewportChange(preset);
-  }
-
-  function applyCustomViewport() {
-    if (!customIsValid) return;
-    onViewportChange({
-      kind: "custom",
-      label: "Custom",
-      width: parsedWidth,
-    });
-    setCustomOpen(false);
   }
 
   const viewportButtons = [
@@ -425,63 +493,13 @@ function CanvasToolbar({
       </div>
       <div className="flex items-center gap-3 text-zinc-500"><Code2 className="size-3.5" /><MoreHorizontal className="size-4" /></div>
       {customOpen && (
-        <form
-          aria-label="Custom canvas size"
-          className="absolute top-11 left-1/2 z-30 w-64 -translate-x-1/2 rounded-lg border border-zinc-200 bg-white p-3 shadow-xl"
-          onSubmit={(event) => {
-            event.preventDefault();
-            applyCustomViewport();
-          }}
-          role="dialog"
-        >
-          <div className="mb-2 flex items-center justify-between">
-            <p className="font-semibold text-zinc-900">Custom canvas size</p>
-            <span className="text-[10px] text-zinc-400">px</span>
-          </div>
-          <div>
-            <label className="grid gap-1 text-[10px] text-zinc-500">
-              Width
-              <Input
-                aria-label="Canvas width"
-                className="h-8 text-xs"
-                inputMode="numeric"
-                max={customViewportBounds.width.max}
-                min={customViewportBounds.width.min}
-                onChange={(event) => setCustomWidth(event.target.value)}
-                type="number"
-                value={customWidth}
-              />
-            </label>
-          </div>
-          <p className="mt-2 text-[9px] text-zinc-400">
-            Width 320–1920
-          </p>
-          <div className="mt-3 flex justify-end gap-2">
-            <Button
-              className="h-7 px-2 text-[10px] hover:text-zinc-900"
-              onClick={() => setCustomOpen(false)}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              Cancel
-            </Button>
-            <Button
-              className="h-7 bg-orange-600 px-3 text-[10px] text-white hover:bg-orange-700"
-              disabled={!customIsValid}
-              size="sm"
-              type="submit"
-            >
-              Apply
-            </Button>
-          </div>
-        </form>
+        <CustomViewportForm key={`${viewport.kind}-${viewport.width}`} onCancel={() => setCustomOpen(false)} onViewportChange={onViewportChange} viewport={viewport} />
       )}
     </div>
   );
 }
 
-function Artboard({ actions, artboardRef, viewport }: { actions: EditorActions; artboardRef: React.RefObject<HTMLElement | null>; viewport: CanvasViewport }) {
+function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }: { actions: EditorActions; artboardHeight: number; artboardRef: React.RefObject<HTMLElement | null>; isResizing: boolean; viewport: CanvasViewport }) {
   const [dragging, setDragging] = useState(false);
   const selectedClass = "ring-1 ring-orange-500 ring-offset-[-1px]";
   const narrow = viewport.width < 768;
@@ -497,13 +515,13 @@ function Artboard({ actions, artboardRef, viewport }: { actions: EditorActions; 
 
   return (
     <article
-      className="relative min-h-[640px] overflow-hidden bg-[#fff7ec] shadow-[0_10px_30px_rgba(74,50,25,0.09)] transition-[width] duration-300 ease-out motion-reduce:transition-none"
+      className={"relative min-h-[640px] overflow-hidden bg-[#fff7ec] shadow-[0_10px_30px_rgba(74,50,25,0.09)] transition-[width] ease-out motion-reduce:transition-none " + (isResizing ? "duration-0" : "duration-300")}
       onDragEnter={() => setDragging(true)}
       onDragLeave={() => setDragging(false)}
       onDragOver={(event) => event.preventDefault()}
       onDrop={handleDrop}
       ref={artboardRef}
-      style={{ width: viewport.width }}
+      style={{ minHeight: artboardHeight, width: viewport.width }}
     >
       <nav className={"flex h-17 items-center justify-between bg-[#fff7ec] text-[10px] text-[#333b32] " + (narrow ? "px-7" : "px-9")}>
         <p className="text-[27px] font-semibold tracking-tight">forma.</p>
@@ -563,15 +581,15 @@ function Inspector({ actions }: { actions: EditorActions }) {
   const SelectionIcon = selection.icon;
   return (
     <aside className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-white">
-      <div className="flex h-12 items-center gap-5 border-b border-zinc-200 px-4 text-xs"><Tabs className="h-full gap-0" defaultValue="style"><TabsList className="h-full gap-5 p-0" variant="line"><TabsTrigger className="h-full flex-none px-0 text-xs data-active:text-zinc-950 after:bottom-0 after:bg-orange-600" value="style">Style</TabsTrigger><TabsTrigger className="h-full flex-none px-0 text-xs after:bottom-0 after:bg-orange-600" value="settings">Settings</TabsTrigger></TabsList></Tabs><MoreHorizontal className="ml-auto size-4 text-zinc-500" /></div>
+      <div className="flex h-12 items-center border-b border-zinc-200 px-4 text-xs"><Tabs className="h-full w-36 gap-0" defaultValue="style"><TabsList className="h-full w-full gap-0 p-0" variant="line"><TabsTrigger className="h-full flex-1 justify-center px-0 text-xs data-active:text-zinc-950 after:bottom-0 after:h-0.5 after:bg-orange-600" value="style">Style</TabsTrigger><TabsTrigger className="h-full flex-1 justify-center px-0 text-xs after:bottom-0 after:h-0.5 after:bg-orange-600" value="settings">Settings</TabsTrigger></TabsList></Tabs><MoreHorizontal className="ml-auto size-4 text-zinc-500" /></div>
       <ResizablePanelGroup className="min-h-0 flex-1" id="inspector-sections" onLayoutChanged={(layout, meta) => { if (meta.isUserInteraction) actions.resize("Inspector sections", layout); }} orientation="vertical">
-        <ResizablePanel defaultSize="18" id="selection" minSize="120px"><div className="h-full overflow-auto border-b border-zinc-200 p-4"><div className="flex items-center gap-3"><div className="grid size-8 place-items-center rounded-md bg-orange-100 text-orange-600"><SelectionIcon className="size-4" /></div><div><p className="text-xs font-semibold">{selection.label}</p><p className="text-[10px] text-zinc-500">{selection.layer}</p></div></div><Button className="mt-3 w-full justify-between border-violet-300 bg-violet-50 text-[10px] text-violet-700 hover:bg-violet-100" size="sm" variant="outline">✦ {selection.label.toLowerCase().replace(" ", "-")} <ChevronDown className="size-3" /></Button><p className="mt-2 text-[9px] text-zinc-500">Inheriting 2 styles on Desktop</p></div></ResizablePanel>
+        <ResizablePanel defaultSize="18" id="selection" minSize="120px"><ScrollArea className="h-full"><div className="border-b border-zinc-200 p-4"><div className="flex items-center gap-3"><div className="grid size-8 place-items-center rounded-md bg-orange-100 text-orange-600"><SelectionIcon className="size-4" /></div><div><p className="text-xs font-semibold">{selection.label}</p><p className="text-[10px] text-zinc-500">{selection.layer}</p></div></div><Button className="mt-3 w-full justify-between border-violet-300 bg-violet-50 text-[10px] text-violet-700 hover:bg-violet-100" size="sm" variant="outline">✦ {selection.label.toLowerCase().replace(" ", "-")} <ChevronDown className="size-3" /></Button><p className="mt-2 text-[9px] text-zinc-500">Inheriting 2 styles on Desktop</p></div></ScrollArea></ResizablePanel>
         <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
-        <ResizablePanel defaultSize="31" id="layout" minSize="210px"><div className="h-full overflow-auto"><InspectorSection title="Layout"><div className="grid grid-cols-4 gap-1 rounded-md bg-zinc-50 p-1"><Button className="h-7 bg-white text-orange-600 shadow-sm hover:bg-white" size="sm" variant="ghost"><PanelTop className="size-3.5" /></Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost"><LayoutTemplate className="size-3.5" /></Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost"><Settings2 className="size-3.5" /></Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost"><MousePointer2 className="size-3.5" /></Button></div><PropertyRow label="Size" value="W  Fill     H  Auto" /><PropertyRow label="Position" value="Relative" /><div className="rounded-md bg-zinc-50 p-2 text-[9px] text-zinc-500"><div className="flex justify-between"><span>MARGIN</span><span>0</span></div><div className="my-1.5 flex items-center gap-2"><span>0</span><div className="flex flex-1 items-center justify-center border border-zinc-200 p-2"><span className="bg-orange-100 px-6 py-2 text-orange-600">PADDING&nbsp; 0</span></div><span>0</span></div><p className="text-center">0</p></div></InspectorSection></div></ResizablePanel>
+        <ResizablePanel defaultSize="31" id="layout" minSize="210px"><ScrollArea className="h-full"><InspectorSection title="Layout"><div className="grid grid-cols-4 gap-1 rounded-md bg-zinc-50 p-1"><Button className="h-7 bg-white text-orange-600 shadow-sm hover:bg-white" size="sm" variant="ghost"><PanelTop className="size-3.5" /></Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost"><LayoutTemplate className="size-3.5" /></Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost"><Settings2 className="size-3.5" /></Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost"><MousePointer2 className="size-3.5" /></Button></div><PropertyRow label="Size" value="W  Fill     H  Auto" /><PropertyRow label="Position" value="Relative" /><div className="rounded-md bg-zinc-50 p-2 text-[9px] text-zinc-500"><div className="flex justify-between"><span>MARGIN</span><span>0</span></div><div className="my-1.5 flex items-center gap-2"><span>0</span><div className="flex flex-1 items-center justify-center border border-zinc-200 p-2"><span className="bg-orange-100 px-6 py-2 text-orange-600">PADDING&nbsp; 0</span></div><span>0</span></div><p className="text-center">0</p></div></InspectorSection></ScrollArea></ResizablePanel>
         <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
-        <ResizablePanel defaultSize="35" id="typography" minSize="240px"><div className="h-full overflow-auto"><InspectorSection title="Typography"><Button className="h-8 w-full justify-between bg-zinc-50 px-2 text-base font-medium hover:bg-zinc-100" variant="ghost">Inter <ChevronDown className="size-3 text-zinc-500" /></Button><PropertyRow label="Weight" value="Semibold" /><PropertyRow label="Size" value="76   px" /><div className="grid grid-cols-2 gap-2"><Input aria-label="Line height" className="h-8 border-0 bg-zinc-50 text-xs shadow-none" readOnly value="↕  98%" /><Input aria-label="Letter spacing" className="h-8 border-0 bg-zinc-50 text-xs shadow-none" readOnly value="↔  −1.6" /></div><div className="grid grid-cols-4 rounded-md bg-zinc-50 p-1"><Button className="h-7 bg-white text-orange-600" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button></div><PropertyRow label="Color" value="■  333B32   100%" /></InspectorSection></div></ResizablePanel>
+        <ResizablePanel defaultSize="35" id="typography" minSize="240px"><ScrollArea className="h-full"><InspectorSection title="Typography"><Button className="h-8 w-full justify-between bg-zinc-50 px-2 text-base font-medium hover:bg-zinc-100" variant="ghost">Inter <ChevronDown className="size-3 text-zinc-500" /></Button><PropertyRow label="Weight" value="Semibold" /><PropertyRow label="Size" value="76   px" /><div className="grid grid-cols-2 gap-2"><Input aria-label="Line height" className="h-8 border-0 bg-zinc-50 text-xs shadow-none" readOnly value="↕  98%" /><Input aria-label="Letter spacing" className="h-8 border-0 bg-zinc-50 text-xs shadow-none" readOnly value="↔  −1.6" /></div><div className="grid grid-cols-4 rounded-md bg-zinc-50 p-1"><Button className="h-7 bg-white text-orange-600" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button></div><PropertyRow label="Color" value="■  333B32   100%" /></InspectorSection></ScrollArea></ResizablePanel>
         <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
-        <ResizablePanel defaultSize="16" id="appearance" minSize="120px"><div className="h-full overflow-auto"><InspectorSection title="Appearance"><PropertyRow label="Opacity" value="100%" /><PropertyRow label="Radius" value="⌜  0" /></InspectorSection><Button className="h-10 w-full justify-between rounded-none px-4 text-xs font-semibold hover:bg-zinc-50" variant="ghost">Effects <Plus className="size-3.5 text-zinc-500" /></Button></div></ResizablePanel>
+        <ResizablePanel defaultSize="16" id="appearance" minSize="120px"><ScrollArea className="h-full"><InspectorSection title="Appearance"><PropertyRow label="Opacity" value="100%" /><PropertyRow label="Radius" value="⌜  0" /></InspectorSection><Button className="h-10 w-full justify-between rounded-none px-4 text-xs font-semibold hover:bg-zinc-50" variant="ghost">Effects <Plus className="size-3.5 text-zinc-500" /></Button></ScrollArea></ResizablePanel>
       </ResizablePanelGroup>
     </aside>
   );
@@ -582,21 +600,26 @@ function Canvas({ actions, compact, onViewportChange, variant, viewport }: { act
   const canvasStageRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement>(null);
   const panRef = useRef({ active: false, pointerId: -1, startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0 });
-  const [artboardHeight, setArtboardHeight] = useState(640);
+  const canvasResizeRef = useRef({ active: false, pointerId: -1, startWidth: viewport.width, startX: 0 });
+  const zoomFrameRef = useRef<number | null>(null);
+  const [artboardHeight, setArtboardHeight] = useState(defaultCanvasHeight);
   const [isPanning, setIsPanning] = useState(false);
+  const [isResizingCanvas, setIsResizingCanvas] = useState(false);
   const [zoom, setZoom] = useState(100);
   const [zoomDraft, setZoomDraft] = useState("100");
   const [editingZoom, setEditingZoom] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const zoomScale = zoom / 100;
+  const zoomBaseline = viewport.zoomBaseline;
+  const zoomScale = zoomBaseline * zoom / 100;
   const scaledWidth = viewport.width * zoomScale;
   const scaledHeight = artboardHeight * zoomScale;
+  const widthTransition = isResizingCanvas ? "duration-0" : "duration-300";
 
   useEffect(() => {
     const artboard = artboardRef.current;
     if (!artboard) return;
 
-    const measure = () => setArtboardHeight(Math.max(640, artboard.scrollHeight));
+    const measure = () => setArtboardHeight(Math.max(defaultCanvasHeight, artboard.scrollHeight));
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(artboard);
@@ -616,15 +639,48 @@ function Canvas({ actions, compact, onViewportChange, variant, viewport }: { act
     recenter();
     const observer = new ResizeObserver(recenter);
     observer.observe(scrollViewport);
-    if (canvasStageRef.current) observer.observe(canvasStageRef.current);
     return () => observer.disconnect();
-  }, [viewport.width, zoom]);
+  }, []);
+
+  useEffect(() => () => {
+    if (zoomFrameRef.current !== null) cancelAnimationFrame(zoomFrameRef.current);
+  }, []);
 
   function applyZoom(value: number) {
     const nextZoom = Math.min(150, Math.max(25, Math.round(value)));
+    if (nextZoom === zoom) {
+      setZoomDraft(String(nextZoom));
+      setEditingZoom(false);
+      return;
+    }
+
+    const scrollViewport = scrollViewportRef.current;
+    const artboard = artboardRef.current;
+    let anchor: { clientX: number; clientY: number; contentX: number; contentY: number } | null = null;
+    if (scrollViewport && artboard) {
+      const scrollBounds = scrollViewport.getBoundingClientRect();
+      const artboardBounds = artboard.getBoundingClientRect();
+      anchor = {
+        clientX: scrollBounds.left + scrollViewport.clientWidth / 2,
+        clientY: scrollBounds.top + scrollViewport.clientHeight / 2,
+        contentX: (scrollBounds.left + scrollViewport.clientWidth / 2 - artboardBounds.left) / zoomScale,
+        contentY: (scrollBounds.top + scrollViewport.clientHeight / 2 - artboardBounds.top) / zoomScale,
+      };
+    }
+
     setZoom(nextZoom);
     setZoomDraft(String(nextZoom));
     setEditingZoom(false);
+
+    if (!anchor || !scrollViewport || !artboard) return;
+    if (zoomFrameRef.current !== null) cancelAnimationFrame(zoomFrameRef.current);
+    zoomFrameRef.current = requestAnimationFrame(() => {
+      const updatedBounds = artboard.getBoundingClientRect();
+      const nextScale = zoomBaseline * nextZoom / 100;
+      scrollViewport.scrollLeft += updatedBounds.left + anchor.contentX * nextScale - anchor.clientX;
+      scrollViewport.scrollTop += updatedBounds.top + anchor.contentY * nextScale - anchor.clientY;
+      zoomFrameRef.current = null;
+    });
   }
 
   function commitZoomDraft() {
@@ -693,31 +749,106 @@ function Canvas({ actions, compact, onViewportChange, variant, viewport }: { act
     if (event.button === 1 && event.detail >= 2) centerCanvasHorizontally();
   }
 
+  function updateCanvasWidth(width: number) {
+    const nextWidth = Math.min(
+      customViewportBounds.width.max,
+      Math.max(customViewportBounds.width.min, Math.round(width)),
+    );
+    onViewportChange({
+      kind: "custom",
+      label: "Custom",
+      width: nextWidth,
+      zoomBaseline: viewport.zoomBaseline,
+    });
+  }
+
+  function handleCanvasResizeStart(event: PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    canvasResizeRef.current = {
+      active: true,
+      pointerId: event.pointerId,
+      startWidth: viewport.width,
+      startX: event.clientX,
+    };
+    setIsResizingCanvas(true);
+  }
+
+  function handleCanvasResizeMove(event: PointerEvent<HTMLDivElement>) {
+    const resize = canvasResizeRef.current;
+    if (!resize.active || resize.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    updateCanvasWidth(resize.startWidth + (event.clientX - resize.startX) / zoomScale);
+  }
+
+  function handleCanvasResizeEnd(event: PointerEvent<HTMLDivElement>) {
+    const resize = canvasResizeRef.current;
+    if (!resize.active || resize.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    resize.active = false;
+    setIsResizingCanvas(false);
+  }
+
+  function handleCanvasResizeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const adjustment = event.key === "ArrowRight" ? 16 : event.key === "ArrowLeft" ? -16 : 0;
+    if (!adjustment) return;
+    event.preventDefault();
+    updateCanvasWidth(viewport.width + adjustment);
+  }
+
   return (
     <main className={"flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#f7f6f4] " + (isFullscreen ? "fixed inset-0 z-[60] h-screen w-screen" : "")}>
       <CanvasToolbar onViewportChange={onViewportChange} viewport={viewport} />
-      <div
-        className={"min-h-0 flex-1 overflow-auto overscroll-contain " + (isPanning ? "cursor-grabbing select-none" : "")}
-        onAuxClick={handleMiddleClick}
-        onMouseDown={handleMiddleMouseDown}
-        onPointerCancel={handlePanEnd}
-        onPointerDown={handlePanStart}
-        onPointerMove={handlePanMove}
-        onPointerUp={handlePanEnd}
-        ref={scrollViewportRef}
+      <ScrollArea
+        className="min-h-0 flex-1"
+        horizontal
+        viewportClassName={"overscroll-contain " + (isPanning ? "cursor-grabbing select-none" : "")}
+        viewportProps={{
+          onAuxClick: handleMiddleClick,
+          onMouseDown: handleMiddleMouseDown,
+          onPointerCancel: handlePanEnd,
+          onPointerDown: handlePanStart,
+          onPointerMove: handlePanMove,
+          onPointerUp: handlePanEnd,
+        }}
+        viewportRef={scrollViewportRef}
       >
         <div className="box-border flex min-h-full w-max min-w-full justify-center px-5 py-6 sm:px-10">
-          <div className="my-auto shrink-0 transition-[width,height] duration-300 ease-out motion-reduce:transition-none" ref={canvasStageRef} style={{ height: scaledHeight + 20, width: scaledWidth }}>
+          <div className={"my-auto shrink-0 transition-[width,height] ease-out motion-reduce:transition-none " + widthTransition} ref={canvasStageRef} style={{ height: scaledHeight + 20, width: scaledWidth }}>
             <div className="mb-2 flex shrink-0 justify-between text-[10px] text-zinc-400"><span>Home · {viewport.label}</span><span>{viewport.width} px</span></div>
-            <div className="relative overflow-hidden transition-[width,height] duration-300 ease-out motion-reduce:transition-none" style={{ height: scaledHeight, width: scaledWidth }}>
+            <div className={"relative transition-[width,height] ease-out motion-reduce:transition-none " + widthTransition} style={{ height: scaledHeight, width: scaledWidth }}>
               <div className="absolute top-0 left-0 origin-top-left transition-transform duration-300 ease-out will-change-transform motion-reduce:transition-none" style={{ transform: `scale(${zoomScale})`, width: viewport.width }}>
-                <Artboard actions={actions} artboardRef={artboardRef} viewport={viewport} />
+                <Artboard actions={actions} artboardHeight={artboardHeight} artboardRef={artboardRef} isResizing={isResizingCanvas} viewport={viewport} />
+              </div>
+              <div
+                aria-label="Resize canvas width"
+                aria-orientation="vertical"
+                aria-valuemax={customViewportBounds.width.max}
+                aria-valuemin={customViewportBounds.width.min}
+                aria-valuenow={viewport.width}
+                className="absolute top-0 right-0 z-10 flex h-full w-4 translate-x-1/2 cursor-ew-resize touch-none items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                onKeyDown={handleCanvasResizeKeyDown}
+                onPointerCancel={handleCanvasResizeEnd}
+                onPointerDown={handleCanvasResizeStart}
+                onPointerMove={handleCanvasResizeMove}
+                onPointerUp={handleCanvasResizeEnd}
+                role="separator"
+                tabIndex={0}
+              >
+                <span className="h-12 w-1 rounded-full bg-zinc-300 shadow-sm transition-colors hover:bg-orange-500" />
               </div>
             </div>
           </div>
         </div>
-      </div>
-      <footer className="sticky bottom-0 z-20 flex h-11 shrink-0 items-center justify-between gap-3 border-t border-zinc-200 bg-white px-4 text-[9px] text-zinc-500">
+      </ScrollArea>
+      <footer className="sticky bottom-0 z-20 flex h-11 shrink-0 items-center justify-between gap-3 border-t border-zinc-200 bg-white px-4 text-[11px] text-zinc-500">
         <span className="truncate">Home › Hero section › <span className="text-orange-600">{selectionDetails[actions.selected].label}</span></span>
         <div className="flex items-center gap-0.5">
           <Button
