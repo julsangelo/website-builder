@@ -15,7 +15,7 @@ export default function LeftPanel() {
       defaultSize="20%"
       minSize="15%"
       maxSize="30%"
-      className="h-full border-r bg-background"
+      className="h-full border-r"
     >
       <Tabs defaultValue="design" className="h-full gap-0">
         <div className="flex items-center justify-between border-b p-2">
