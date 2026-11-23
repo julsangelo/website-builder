@@ -16,6 +16,7 @@ import {
   type LucideIcon,
   ArrowLeft,
   ArrowRight,
+  CircleUserRound,
   ChevronDown,
   CloudCheck,
   Code2,
@@ -28,6 +29,7 @@ import {
   LayoutTemplate,
   ListFilter,
   LockKeyhole,
+  Mail,
   Maximize2,
   Minimize2,
   Minus,
@@ -35,6 +37,7 @@ import {
   MoreHorizontal,
   MousePointer2,
   PanelTop,
+  Pencil,
   Play,
   Plus,
   Redo2,
@@ -43,12 +46,29 @@ import {
   Settings2,
   Smartphone,
   Tablet,
+  Trash2,
   Type,
   Undo2,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import {
   ResizableHandle,
@@ -58,6 +78,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog } from "@base-ui/react/dialog";
 
 // PROTOTYPE: Three Figma-derived website editor shells, switchable via ?variant=a|b|c.
 
@@ -106,6 +127,77 @@ type CanvasViewport = {
   width: number;
   zoomBaseline: number;
 };
+
+type PagePresetId = "landing" | "about" | "portfolio" | "contact" | "custom";
+
+type BuilderPage = {
+  id: string;
+  icon: LucideIcon;
+  name: string;
+  preset: PagePresetId;
+};
+
+type PagePreset = {
+  description: string;
+  icon: LucideIcon;
+  id: PagePresetId;
+  name: string;
+  title: string;
+};
+
+type PageDialogState =
+  | { mode: "rename"; pageId: string }
+  | { mode: "delete"; pageId: string }
+  | null;
+
+const pagePresets: PagePreset[] = [
+  {
+    id: "landing",
+    title: "Landing page",
+    name: "Landing page",
+    description: "A focused starting page",
+    icon: Home,
+  },
+  {
+    id: "about",
+    title: "About page",
+    name: "About",
+    description: "Tell your story",
+    icon: CircleUserRound,
+  },
+  {
+    id: "portfolio",
+    title: "Portfolio page",
+    name: "Portfolio",
+    description: "Showcase selected work",
+    icon: LayoutTemplate,
+  },
+  {
+    id: "contact",
+    title: "Contact page",
+    name: "Contact",
+    description: "Help visitors get in touch",
+    icon: Mail,
+  },
+  {
+    id: "custom",
+    title: "Custom page",
+    name: "Custom page",
+    description: "Start with a blank page",
+    icon: FileText,
+  },
+];
+
+const initialPages: BuilderPage[] = [];
+
+function uniquePageName(name: string, pages: BuilderPage[]) {
+  const existingNames = new Set(pages.map((page) => page.name.toLocaleLowerCase()));
+  if (!existingNames.has(name.toLocaleLowerCase())) return name;
+
+  let suffix = 2;
+  while (existingNames.has(`${name} ${suffix}`.toLocaleLowerCase())) suffix += 1;
+  return `${name} ${suffix}`;
+}
 
 const desktopCanvasScaleAtHundredPercent = 0.6;
 
@@ -286,7 +378,163 @@ function QuickInsert({ actions, rail = false }: { actions: EditorActions; rail?:
   );
 }
 
-function Navigator({ actions }: { actions: EditorActions }) {
+function PageListItem({
+  active,
+  onDelete,
+  onRename,
+  onSelect,
+  page,
+}: {
+  active: boolean;
+  onDelete: () => void;
+  onRename: () => void;
+  onSelect: () => void;
+  page: BuilderPage;
+}) {
+  const Icon = page.icon;
+
+  return (
+    <div
+      className={
+        "group flex h-8 items-center rounded-md transition " +
+        (active ? "bg-orange-100 text-orange-600" : "text-zinc-700 hover:bg-zinc-100")
+      }
+    >
+      <Button
+        aria-current={active ? "page" : undefined}
+        className={
+          "h-full min-w-0 flex-1 justify-start gap-2 rounded-md px-2.5 text-left text-xs font-normal hover:bg-transparent " +
+          (active ? "font-medium text-orange-600 hover:text-orange-600" : "text-zinc-700 hover:text-zinc-700")
+        }
+        onClick={onSelect}
+        type="button"
+        variant="ghost"
+      >
+        <Icon className="size-3.5 shrink-0" />
+        <span className="truncate">{page.name}</span>
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label={`Open actions for ${page.name}`}
+          className={
+            "mr-1 grid size-5 shrink-0 place-items-center rounded-md outline-none transition hover:bg-orange-200 hover:text-orange-700 focus-visible:ring-2 focus-visible:ring-orange-500 " +
+            (active ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100")
+          }
+          type="button"
+        >
+          <MoreHorizontal className="size-3" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-32">
+          <DropdownMenuItem className="h-7 px-1.5 py-0 text-xs" onClick={onRename}>
+            <Pencil className="size-3" /> Rename
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="h-7 px-1.5 py-0 text-xs" onClick={onDelete} variant="destructive">
+            <Trash2 className="size-3" /> Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+function PageManagementDialog({
+  dialog,
+  draftName,
+  onClose,
+  onConfirm,
+  onDraftNameChange,
+  page,
+}: {
+  dialog: PageDialogState;
+  draftName: string;
+  onClose: () => void;
+  onConfirm: () => void;
+  onDraftNameChange: (name: string) => void;
+  page: BuilderPage | null;
+}) {
+  if (!dialog || !page) return null;
+
+  const isRename = dialog?.mode === "rename";
+  const canConfirm = !isRename || draftName.trim().length > 0;
+
+  return (
+    <Dialog.Root onOpenChange={(open) => !open && onClose()} open>
+      <Dialog.Portal>
+        <Dialog.Backdrop className="fixed inset-0 z-[80] bg-zinc-950/25 backdrop-blur-[1px]" />
+        <Dialog.Viewport className="fixed inset-0 z-[81] grid place-items-center p-4">
+          <Dialog.Popup className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-5 shadow-2xl outline-none">
+            <Dialog.Title className="text-base font-semibold text-zinc-950">
+              {isRename ? "Rename page" : "Delete page?"}
+            </Dialog.Title>
+            <Dialog.Description className="mt-1.5 text-sm leading-5 text-zinc-500">
+              {isRename
+                ? "Choose a clear name for this page."
+                : `Delete ${page.name}? This page and its content cannot be restored.`}
+            </Dialog.Description>
+            {isRename ? (
+              <form
+                className="mt-5"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (canConfirm) onConfirm();
+                }}
+              >
+                <label className="grid gap-1.5 text-xs font-medium text-zinc-700">
+                  Page name
+                  <Input
+                    autoFocus
+                    className="h-9 text-sm"
+                    maxLength={48}
+                    onChange={(event) => onDraftNameChange(event.target.value)}
+                    value={draftName}
+                  />
+                </label>
+                <div className="mt-5 flex justify-end gap-2">
+                  <Button onClick={onClose} type="button" variant="outline">
+                    Cancel
+                  </Button>
+                  <Button disabled={!canConfirm} type="submit">
+                    Save name
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="mt-5 flex justify-end gap-2">
+                <Button onClick={onClose} type="button" variant="outline">
+                  Cancel
+                </Button>
+                <Button className="bg-red-600 text-white hover:bg-red-700" onClick={onConfirm} type="button">
+                  Delete page
+                </Button>
+              </div>
+            )}
+          </Dialog.Popup>
+        </Dialog.Viewport>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+function Navigator({
+  actions,
+  onAddPage,
+  onDeletePage,
+  onRenamePage,
+  onSelectPage,
+  pages,
+  selectedPageId,
+}: {
+  actions: EditorActions;
+  onAddPage: (preset: PagePreset) => void;
+  onDeletePage: (page: BuilderPage) => void;
+  onRenamePage: (page: BuilderPage) => void;
+  onSelectPage: (page: BuilderPage) => void;
+  pages: BuilderPage[];
+  selectedPageId: string | null;
+}) {
+  const [pagesScrolled, setPagesScrolled] = useState(false);
+
   return (
     <aside className="flex h-full w-full min-w-0 flex-col bg-white">
       <div className="flex h-12 items-center border-b border-zinc-200 px-4 text-xs">
@@ -307,15 +555,98 @@ function Navigator({ actions }: { actions: EditorActions }) {
         orientation="vertical"
       >
         <ResizablePanel defaultSize="22" id="pages" minSize="120px">
-          <ScrollArea className="h-full">
-            <section className="p-3">
-              <div className="mb-2 flex items-center justify-between px-1 text-xs font-semibold">
-                Pages <Plus className="size-3.5 text-zinc-500" />
+          <ScrollArea
+            className="h-full"
+            viewportProps={{
+              onScroll: (event) => setPagesScrolled(event.currentTarget.scrollTop > 0),
+            }}
+          >
+            <section className="min-h-full">
+              <div
+                className={
+                  "sticky top-0 z-10 flex h-10 items-center justify-between border-b border-zinc-100 bg-white px-4 text-xs font-semibold transition-shadow " +
+                  (pagesScrolled ? "shadow-[0_4px_8px_rgba(24,24,27,0.12)]" : "shadow-none")
+                }
+              >
+                <span>Pages</span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    aria-label="Add page"
+                    className="grid size-5 place-items-center rounded-md text-zinc-500 outline-none transition hover:bg-orange-100 hover:text-orange-700 focus-visible:ring-2 focus-visible:ring-orange-500"
+                    type="button"
+                  >
+                    <Plus className="size-3" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuGroup>
+                      <DropdownMenuLabel className="px-1.5 py-1 text-[10px]">Add page</DropdownMenuLabel>
+                      {pagePresets
+                        .filter((preset) => preset.id !== "custom")
+                        .map((preset) => {
+                          const Icon = preset.icon;
+                          return (
+                            <DropdownMenuItem
+                              className="items-start gap-1.5 py-1.5 text-xs"
+                              key={preset.id}
+                              onClick={() => onAddPage(preset)}
+                            >
+                              <Icon className="mt-0.5 size-3.5" />
+                              <span className="grid gap-0.5">
+                                <span>{preset.title}</span>
+                                <span className="text-[10px] font-normal text-zinc-500">{preset.description}</span>
+                              </span>
+                            </DropdownMenuItem>
+                          );
+                        })}
+                    </DropdownMenuGroup>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      {pagePresets
+                        .filter((preset) => preset.id === "custom")
+                        .map((preset) => {
+                          const Icon = preset.icon;
+                          return (
+                            <DropdownMenuItem
+                              className="items-start gap-1.5 py-1.5 text-xs"
+                              key={preset.id}
+                              onClick={() => onAddPage(preset)}
+                            >
+                              <Icon className="mt-0.5 size-3.5" />
+                              <span className="grid gap-0.5">
+                                <span>{preset.title}</span>
+                                <span className="text-[10px] font-normal text-zinc-500">{preset.description}</span>
+                              </span>
+                            </DropdownMenuItem>
+                          );
+                        })}
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
-              <SidebarItem active><Home className="size-3.5" /> Home <MoreHorizontal className="ml-auto size-3.5" /></SidebarItem>
-              <SidebarItem><FileText className="size-3.5" /> Our studio</SidebarItem>
-              <SidebarItem><FileText className="size-3.5" /> Selected work</SidebarItem>
-              <SidebarItem><FileText className="size-3.5" /> Contact</SidebarItem>
+              <div className="space-y-0.5 p-3 pt-2">
+                {pages.length ? (
+                  pages.map((page) => (
+                    <PageListItem
+                      active={page.id === selectedPageId}
+                      key={page.id}
+                      onDelete={() => onDeletePage(page)}
+                      onRename={() => onRenamePage(page)}
+                      onSelect={() => onSelectPage(page)}
+                      page={page}
+                    />
+                  ))
+                ) : (
+                  <Empty className="min-h-28 gap-3 border-0 bg-zinc-50/70 p-3">
+                    <EmptyHeader className="gap-1.5">
+                      <EmptyMedia className="size-8 rounded-lg bg-zinc-100 [&>svg]:size-4">
+                        <FileText />
+                      </EmptyMedia>
+                      <EmptyTitle className="text-xs">No pages yet</EmptyTitle>
+                      <EmptyDescription className="text-[11px]">Use the plus button to add your first page.</EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                )}
+              </div>
             </section>
           </ScrollArea>
         </ResizablePanel>
@@ -427,12 +758,15 @@ function CustomViewportForm({ onCancel, onViewportChange, viewport }: { onCancel
 
 function CanvasToolbar({
   onViewportChange,
+  page,
   viewport,
 }: {
   onViewportChange: (viewport: CanvasViewport) => void;
+  page: BuilderPage | null;
   viewport: CanvasViewport;
 }) {
   const [customOpen, setCustomOpen] = useState(false);
+  const PageIcon = page?.icon ?? FileText;
 
   function choosePreset(kind: Exclude<CanvasViewportKind, "custom">) {
     const preset = canvasViewportPresets[kind];
@@ -448,7 +782,7 @@ function CanvasToolbar({
 
   return (
     <div className="relative flex h-12 items-center justify-between border-b border-zinc-200 bg-white px-4 text-xs">
-      <div className="flex items-center gap-1.5 text-zinc-600"><Home className="size-3.5" /> Home <ChevronDown className="size-3" /></div>
+      <div className="flex min-w-0 items-center gap-1.5 text-zinc-600"><PageIcon className="size-3.5 shrink-0" /> <span className="truncate">{page?.name ?? "No page selected"}</span> <ChevronDown className="size-3 shrink-0" /></div>
       <div className="flex items-center gap-1 rounded-md bg-zinc-50 p-1">
         {viewportButtons.map(({ kind, label, icon: ViewportIcon }) => {
           const active = viewport.kind === kind;
@@ -534,11 +868,19 @@ function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }
         )}
       </header>
       <section className="grid place-items-center bg-white px-8 text-center" style={{ minHeight: artboardHeight - browserHeaderHeight }}>
-        <div>
-          <div className={(compactPreview ? "mb-3 size-9 " : "mb-5 size-12 ") + "mx-auto grid place-items-center rounded-xl bg-zinc-100 text-zinc-500"}><Globe2 className={compactPreview ? "size-4" : "size-6"} /></div>
-          <p className={(compactPreview ? "text-base " : "text-xl ") + "font-medium text-zinc-900"}>Your website preview</p>
-          <p className={(compactPreview ? "mt-1.5 text-xs " : "mt-3 text-base ") + "text-zinc-500"}>Your page will appear here as you build it.</p>
-        </div>
+        <Empty className="max-w-sm flex-none gap-4 border-0 p-0">
+          <EmptyHeader className={compactPreview ? "gap-1.5" : "gap-3"}>
+            <EmptyMedia className={(compactPreview ? "size-9 rounded-lg [&>svg]:size-4" : "size-12") + " bg-zinc-100 text-zinc-500"}>
+              <Globe2 />
+            </EmptyMedia>
+            <EmptyTitle className={compactPreview ? "text-base" : "text-xl"}>
+              Your website preview
+            </EmptyTitle>
+            <EmptyDescription className={compactPreview ? "text-xs" : "text-base"}>
+              Your page will appear here as you build it.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       </section>
       {dragging && <div className="absolute inset-x-3 top-14 bottom-3 grid place-items-center border-2 border-dashed border-orange-500 bg-orange-50/90 text-sm font-medium text-orange-700">Drop to add a block</div>}
     </article>
@@ -572,7 +914,7 @@ function Inspector({ actions }: { actions: EditorActions }) {
   );
 }
 
-function Canvas({ actions, compact, onViewportChange, variant, viewport }: { actions: EditorActions; compact: boolean; onViewportChange: (viewport: CanvasViewport) => void; variant: VariantKey; viewport: CanvasViewport }) {
+function Canvas({ actions, compact, onViewportChange, page, variant, viewport }: { actions: EditorActions; compact: boolean; onViewportChange: (viewport: CanvasViewport) => void; page: BuilderPage | null; variant: VariantKey; viewport: CanvasViewport }) {
   const artboardRef = useRef<HTMLElement>(null);
   const canvasStageRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement>(null);
@@ -782,7 +1124,7 @@ function Canvas({ actions, compact, onViewportChange, variant, viewport }: { act
 
   return (
     <main className={"flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#f7f6f4] " + (isFullscreen ? "fixed inset-0 z-[60] h-screen w-screen" : "")}>
-      <CanvasToolbar onViewportChange={onViewportChange} viewport={viewport} />
+      <CanvasToolbar onViewportChange={onViewportChange} page={page} viewport={viewport} />
       <ScrollArea
         className="min-h-0 flex-1"
         horizontal
@@ -797,36 +1139,52 @@ function Canvas({ actions, compact, onViewportChange, variant, viewport }: { act
         }}
         viewportRef={scrollViewportRef}
       >
-        <div className="box-border flex min-h-full w-max min-w-full justify-center px-5 py-6 sm:px-10">
-          <div className={"my-auto shrink-0 transition-[width,height] ease-out motion-reduce:transition-none " + widthTransition} ref={canvasStageRef} style={{ height: scaledHeight + 20, width: scaledWidth }}>
-            <div className="mb-2 flex shrink-0 justify-between text-[10px] text-zinc-400"><span>Home · {viewport.label}</span><span>{viewport.width} px</span></div>
-            <div className={"relative transition-[width,height] ease-out motion-reduce:transition-none " + widthTransition} style={{ height: scaledHeight, width: scaledWidth }}>
-              <div className="absolute top-0 left-0 origin-top-left transition-transform duration-300 ease-out will-change-transform motion-reduce:transition-none" style={{ transform: `scale(${zoomScale})`, width: viewport.width }}>
-                <Artboard actions={actions} artboardHeight={artboardHeight} artboardRef={artboardRef} isResizing={isResizingCanvas} viewport={viewport} />
-              </div>
-              <div
-                aria-label="Resize canvas width"
-                aria-orientation="vertical"
-                aria-valuemax={customViewportBounds.width.max}
-                aria-valuemin={customViewportBounds.width.min}
-                aria-valuenow={viewport.width}
-                className="absolute top-0 right-0 z-10 flex h-full w-4 translate-x-1/2 cursor-ew-resize touch-none items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
-                onKeyDown={handleCanvasResizeKeyDown}
-                onPointerCancel={handleCanvasResizeEnd}
-                onPointerDown={handleCanvasResizeStart}
-                onPointerMove={handleCanvasResizeMove}
-                onPointerUp={handleCanvasResizeEnd}
-                role="separator"
-                tabIndex={0}
-              >
-                <span className="h-12 w-1 rounded-full bg-zinc-300 shadow-sm transition-colors hover:bg-orange-500" />
+        {page ? (
+          <div className="box-border flex min-h-full w-max min-w-full justify-center px-5 py-6 sm:px-10">
+            <div className={"my-auto shrink-0 transition-[width,height] ease-out motion-reduce:transition-none " + widthTransition} ref={canvasStageRef} style={{ height: scaledHeight + 20, width: scaledWidth }}>
+              <div className="mb-2 flex shrink-0 justify-between text-[10px] text-zinc-400"><span>{page.name} · {viewport.label}</span><span>{viewport.width} px</span></div>
+              <div className={"relative transition-[width,height] ease-out motion-reduce:transition-none " + widthTransition} style={{ height: scaledHeight, width: scaledWidth }}>
+                <div className="absolute top-0 left-0 origin-top-left transition-transform duration-300 ease-out will-change-transform motion-reduce:transition-none" style={{ transform: `scale(${zoomScale})`, width: viewport.width }}>
+                  <Artboard actions={actions} artboardHeight={artboardHeight} artboardRef={artboardRef} isResizing={isResizingCanvas} viewport={viewport} />
+                </div>
+                <div
+                  aria-label="Resize canvas width"
+                  aria-orientation="vertical"
+                  aria-valuemax={customViewportBounds.width.max}
+                  aria-valuemin={customViewportBounds.width.min}
+                  aria-valuenow={viewport.width}
+                  className="absolute top-0 right-0 z-10 flex h-full w-4 translate-x-1/2 cursor-ew-resize touch-none items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                  onKeyDown={handleCanvasResizeKeyDown}
+                  onPointerCancel={handleCanvasResizeEnd}
+                  onPointerDown={handleCanvasResizeStart}
+                  onPointerMove={handleCanvasResizeMove}
+                  onPointerUp={handleCanvasResizeEnd}
+                  role="separator"
+                  tabIndex={0}
+                >
+                  <span className="h-12 w-1 rounded-full bg-zinc-300 shadow-sm transition-colors hover:bg-orange-500" />
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex min-h-[calc(100dvh-9.75rem)] min-w-full items-center justify-center p-8 text-center">
+            <Empty className="max-w-md flex-none border-0 bg-transparent shadow-none">
+              <EmptyHeader className="gap-3">
+                <EmptyMedia className="bg-zinc-100 text-zinc-500">
+                  <Globe2 />
+                </EmptyMedia>
+                <EmptyTitle className="text-xl">No pages yet</EmptyTitle>
+                <EmptyDescription>
+                  Add a page from the Pages panel to start building your website.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          </div>
+        )}
       </ScrollArea>
       <footer className="sticky bottom-0 z-20 flex h-11 shrink-0 items-center justify-between gap-3 border-t border-zinc-200 bg-white px-4 text-[11px] text-zinc-500">
-        <span className="truncate">Home › Hero section › <span className="text-orange-600">{selectionDetails[actions.selected].label}</span></span>
+        <span className="truncate">{page ? <>{page.name} › Hero section › <span className="text-orange-600">{selectionDetails[actions.selected].label}</span></> : "No page selected"}</span>
         <div className="flex items-center gap-0.5">
           <Button
             aria-label="Decrease canvas zoom"
@@ -910,7 +1268,33 @@ function Canvas({ actions, compact, onViewportChange, variant, viewport }: { act
   );
 }
 
-function FormaVariant({ actions, compact, onViewportChange, variant, viewport }: { actions: EditorActions; compact: boolean; onViewportChange: (viewport: CanvasViewport) => void; variant: VariantKey; viewport: CanvasViewport }) {
+function FormaVariant({
+  actions,
+  compact,
+  onAddPage,
+  onDeletePage,
+  onRenamePage,
+  onSelectPage,
+  onViewportChange,
+  page,
+  pages,
+  selectedPageId,
+  variant,
+  viewport,
+}: {
+  actions: EditorActions;
+  compact: boolean;
+  onAddPage: (preset: PagePreset) => void;
+  onDeletePage: (page: BuilderPage) => void;
+  onRenamePage: (page: BuilderPage) => void;
+  onSelectPage: (page: BuilderPage) => void;
+  onViewportChange: (viewport: CanvasViewport) => void;
+  page: BuilderPage | null;
+  pages: BuilderPage[];
+  selectedPageId: string | null;
+  variant: VariantKey;
+  viewport: CanvasViewport;
+}) {
   const showNavigator = !compact && variant !== "c";
   const showInspector = !compact && variant !== "b";
   return (
@@ -918,8 +1302,8 @@ function FormaVariant({ actions, compact, onViewportChange, variant, viewport }:
       <ProjectBar />
       <div className="h-[calc(100vh-4rem)] min-h-0 overflow-hidden">
         <ResizablePanelGroup className="h-full min-h-0" id={`workspace-${variant}`} onLayoutChanged={(layout, meta) => { if (meta.isUserInteraction) actions.resize("Workspace panels", layout); }} orientation="horizontal">
-          {showNavigator && <><ResizablePanel defaultSize="244px" id="navigator" maxSize="380px" minSize="200px"><Navigator actions={actions} /></ResizablePanel><ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle /></>}
-          <ResizablePanel defaultSize={compact ? "100" : "60"} id="canvas" minSize={compact ? "280px" : "560px"}><Canvas actions={actions} compact={compact} onViewportChange={onViewportChange} variant={variant} viewport={viewport} /></ResizablePanel>
+          {showNavigator && <><ResizablePanel defaultSize="244px" id="navigator" maxSize="380px" minSize="200px"><Navigator actions={actions} onAddPage={onAddPage} onDeletePage={onDeletePage} onRenamePage={onRenamePage} onSelectPage={onSelectPage} pages={pages} selectedPageId={selectedPageId} /></ResizablePanel><ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle /></>}
+          <ResizablePanel defaultSize={compact ? "100" : "60"} id="canvas" minSize={compact ? "280px" : "560px"}><Canvas actions={actions} compact={compact} onViewportChange={onViewportChange} page={page} variant={variant} viewport={viewport} /></ResizablePanel>
           {showInspector && <><ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle /><ResizablePanel defaultSize="288px" id="inspector" maxSize="420px" minSize="240px"><Inspector actions={actions} /></ResizablePanel></>}
         </ResizablePanelGroup>
       </div>
@@ -944,13 +1328,66 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
   const [insertedBlocks, setInsertedBlocks] = useState<QuickBlock[]>([]);
   const [compact, setCompact] = useState(false);
   const [viewport, setViewport] = useState<CanvasViewport>(canvasViewportPresets.desktop);
+  const [pages, setPages] = useState<BuilderPage[]>(initialPages);
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
+  const [pageDialog, setPageDialog] = useState<PageDialogState>(null);
+  const [pageNameDraft, setPageNameDraft] = useState("");
+  const pageSequenceRef = useRef(0);
   const changeVariant = useCallback((variant: VariantKey) => { const next = new URLSearchParams(searchParams.toString()); next.set("variant", variant); router.replace(pathname + "?" + next.toString(), { scroll: false }); setLastAction("Switched to " + variants[variant].name); }, [pathname, router, searchParams]);
   const choose = useCallback((node: SelectedNode, source: string) => { setSelected(node); setLastAction("Selected " + selectionDetails[node].label + " from " + source); }, []);
   const addBlock = useCallback((block: QuickBlock, source: string) => { setInsertedBlocks((currentBlocks) => [...currentBlocks, block]); choose(blockTargets[block], source + " · added " + block); }, [choose]);
   const resize = useCallback((scope: string, layout: Record<string, number>) => { const dimensions = Object.entries(layout).map(([id, size]) => `${id} ${Math.round(size)}%`).join(" · "); setLastAction(`${scope} resized · ${dimensions}`); }, []);
   const changeViewport = useCallback((nextViewport: CanvasViewport) => { setViewport(nextViewport); setLastAction(`Canvas changed to ${nextViewport.label} · ${nextViewport.width} px`); }, []);
+  const selectPage = useCallback((page: BuilderPage) => { setSelectedPageId(page.id); setLastAction(`Selected ${page.name} page`); }, []);
+  const addPage = useCallback((preset: PagePreset) => {
+    const page: BuilderPage = {
+      id: `${preset.id}-${pageSequenceRef.current += 1}`,
+      icon: preset.icon,
+      name: uniquePageName(preset.name, pages),
+      preset: preset.id,
+    };
+    setPages((currentPages) => [...currentPages, page]);
+    setSelectedPageId(page.id);
+    setLastAction(`Added ${page.name}`);
+  }, [pages]);
+  const renamePage = useCallback((page: BuilderPage) => {
+    setPageNameDraft(page.name);
+    setPageDialog({ mode: "rename", pageId: page.id });
+  }, []);
+  const deletePage = useCallback((page: BuilderPage) => {
+    setPageDialog({ mode: "delete", pageId: page.id });
+  }, []);
+  const closePageDialog = useCallback(() => setPageDialog(null), []);
+  const confirmPageDialog = useCallback(() => {
+    if (!pageDialog) return;
+    const page = pages.find((candidate) => candidate.id === pageDialog.pageId);
+    if (!page) {
+      closePageDialog();
+      return;
+    }
+
+    if (pageDialog.mode === "rename") {
+      const name = pageNameDraft.trim();
+      if (!name) return;
+      setPages((currentPages) => currentPages.map((candidate) => candidate.id === page.id ? { ...candidate, name } : candidate));
+      setLastAction(`Renamed page to ${name}`);
+      closePageDialog();
+      return;
+    }
+
+    const pageIndex = pages.findIndex((candidate) => candidate.id === page.id);
+    const remainingPages = pages.filter((candidate) => candidate.id !== page.id);
+    setPages(remainingPages);
+    if (selectedPageId === page.id) {
+      setSelectedPageId(remainingPages[Math.min(pageIndex, remainingPages.length - 1)]?.id ?? null);
+    }
+    setLastAction(`Deleted ${page.name}`);
+    closePageDialog();
+  }, [closePageDialog, pageDialog, pageNameDraft, pages, selectedPageId]);
   useEffect(() => { const media = window.matchMedia("(max-width: 899px)"); const sync = () => setCompact(media.matches); sync(); media.addEventListener("change", sync); return () => media.removeEventListener("change", sync); }, []);
   useEffect(() => { if (!showVariantSwitcher) return; function handleKeyDown(event: KeyboardEvent) { const target = event.target as HTMLElement | null; if (target?.closest("input, textarea, [contenteditable='true'], [role='separator']")) return; if (event.key === "ArrowLeft") changeVariant(adjacentVariant(current, -1)); if (event.key === "ArrowRight") changeVariant(adjacentVariant(current, 1)); } window.addEventListener("keydown", handleKeyDown); return () => window.removeEventListener("keydown", handleKeyDown); }, [changeVariant, current, showVariantSwitcher]);
   const actions: EditorActions = { insertedBlocks, selected, lastAction, choose, addBlock, resize };
-  return <><FormaVariant actions={actions} compact={compact} onViewportChange={changeViewport} variant={current} viewport={viewport} />{showVariantSwitcher && <PrototypeSwitcher current={current} onChange={changeVariant} />}</>;
+  const selectedPage = pages.find((page) => page.id === selectedPageId) ?? null;
+  const dialogPage = pageDialog ? pages.find((page) => page.id === pageDialog.pageId) ?? null : null;
+  return <><FormaVariant actions={actions} compact={compact} onAddPage={addPage} onDeletePage={deletePage} onRenamePage={renamePage} onSelectPage={selectPage} onViewportChange={changeViewport} page={selectedPage} pages={pages} selectedPageId={selectedPageId} variant={current} viewport={viewport} /><PageManagementDialog dialog={pageDialog} draftName={pageNameDraft} onClose={closePageDialog} onConfirm={confirmPageDialog} onDraftNameChange={setPageNameDraft} page={dialogPage} />{showVariantSwitcher && <PrototypeSwitcher current={current} onChange={changeVariant} />}</>;
 }
