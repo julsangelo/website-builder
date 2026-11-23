@@ -20,6 +20,8 @@ import {
   ChevronDown,
   CloudCheck,
   Code2,
+  Eye,
+  EyeOff,
   FileText,
   Globe2,
   GripVertical,
@@ -90,7 +92,41 @@ const variants = {
 
 type VariantKey = keyof typeof variants;
 type SelectedNode = "heading" | "hero-image" | "section" | "gallery" | "button";
-type QuickBlock = "section" | "heading" | "image" | "button";
+type QuickBlock = "section" | "box" | "stack" | "grid" | "heading" | "text" | "image" | "button" | "divider";
+type SectionPresetId = "hero" | "navigation" | "features" | "content-media" | "collection" | "gallery" | "testimonials" | "stats" | "faq" | "cta" | "contact" | "footer";
+
+type SectionPreset = {
+  description: string;
+  icon: LucideIcon;
+  id: SectionPresetId;
+  label: string;
+  layers: Array<{ icon: LucideIcon; label: string; target: SelectedNode }>;
+  target: SelectedNode;
+};
+
+type InsertedBlock = {
+  id: string;
+  kind: QuickBlock;
+  visible: boolean;
+};
+
+type InsertedSection = {
+  deletedChildIndexes: number[];
+  hiddenChildIndexes: number[];
+  id: string;
+  preset: SectionPresetId;
+  visible: boolean;
+};
+
+type PageContent = {
+  insertedBlocks: InsertedBlock[];
+  insertedSections: InsertedSection[];
+};
+
+const emptyPageContent: PageContent = {
+  insertedBlocks: [],
+  insertedSections: [],
+};
 
 const selectionDetails: Record<
   SelectedNode,
@@ -105,17 +141,42 @@ const selectionDetails: Record<
 
 const quickBlocks: Array<{ id: QuickBlock; label: string; icon: LucideIcon }> = [
   { id: "section", label: "Section", icon: LayoutTemplate },
+  { id: "box", label: "Box", icon: LayoutTemplate },
+  { id: "stack", label: "Stack", icon: ListFilter },
+  { id: "grid", label: "Grid", icon: PanelTop },
   { id: "heading", label: "Heading", icon: Type },
+  { id: "text", label: "Text", icon: Type },
   { id: "image", label: "Image", icon: ImageIcon },
   { id: "button", label: "Button", icon: MoreHorizontal },
+  { id: "divider", label: "Divider", icon: Minus },
 ];
 
 const blockTargets: Record<QuickBlock, SelectedNode> = {
+  box: "section",
   button: "button",
+  divider: "section",
+  grid: "gallery",
   heading: "heading",
   image: "hero-image",
   section: "section",
+  stack: "section",
+  text: "heading",
 };
+
+const sectionPresets: SectionPreset[] = [
+  { id: "hero", label: "Hero", description: "Heading, CTA, and media", icon: LayoutTemplate, target: "section", layers: [{ label: "Content", icon: LayoutTemplate, target: "section" }, { label: "Heading", icon: Type, target: "heading" }, { label: "CTA button", icon: MousePointer2, target: "button" }, { label: "Image", icon: ImageIcon, target: "hero-image" }] },
+  { id: "navigation", label: "Navigation", description: "Logo, links, and actions", icon: PanelTop, target: "section", layers: [{ label: "Logo", icon: Home, target: "section" }, { label: "Links", icon: ListFilter, target: "section" }, { label: "Action", icon: MousePointer2, target: "button" }] },
+  { id: "features", label: "Feature grid", description: "Icon and text cards", icon: PanelTop, target: "gallery", layers: [{ label: "Heading", icon: Type, target: "heading" }, { label: "Feature cards", icon: PanelTop, target: "gallery" }] },
+  { id: "content-media", label: "Content + media", description: "Split text and image", icon: LayoutTemplate, target: "section", layers: [{ label: "Content", icon: Type, target: "heading" }, { label: "Media", icon: ImageIcon, target: "hero-image" }] },
+  { id: "collection", label: "Card collection", description: "Work, products, or posts", icon: LayoutTemplate, target: "gallery", layers: [{ label: "Section heading", icon: Type, target: "heading" }, { label: "Cards", icon: PanelTop, target: "gallery" }] },
+  { id: "gallery", label: "Gallery", description: "Responsive image collection", icon: ImageIcon, target: "gallery", layers: [{ label: "Images", icon: ImageIcon, target: "gallery" }] },
+  { id: "testimonials", label: "Testimonials", description: "Quotes and customer stories", icon: FileText, target: "gallery", layers: [{ label: "Heading", icon: Type, target: "heading" }, { label: "Quotes", icon: FileText, target: "gallery" }] },
+  { id: "stats", label: "Stats", description: "Key metrics in columns", icon: ListFilter, target: "gallery", layers: [{ label: "Metrics", icon: ListFilter, target: "gallery" }] },
+  { id: "faq", label: "FAQ", description: "Expandable question list", icon: HelpCircle, target: "section", layers: [{ label: "Heading", icon: Type, target: "heading" }, { label: "Questions", icon: HelpCircle, target: "section" }] },
+  { id: "cta", label: "CTA", description: "Focused conversion block", icon: MousePointer2, target: "section", layers: [{ label: "Heading", icon: Type, target: "heading" }, { label: "Button", icon: MousePointer2, target: "button" }] },
+  { id: "contact", label: "Contact", description: "Form and contact details", icon: Mail, target: "section", layers: [{ label: "Heading", icon: Type, target: "heading" }, { label: "Contact form", icon: Mail, target: "section" }] },
+  { id: "footer", label: "Footer", description: "Links, legal, and social", icon: PanelTop, target: "section", layers: [{ label: "Navigation", icon: ListFilter, target: "section" }, { label: "Legal links", icon: FileText, target: "section" }] },
+];
 
 const variantKeys = Object.keys(variants) as VariantKey[];
 
@@ -149,6 +210,8 @@ type PageDialogState =
   | { mode: "rename"; pageId: string }
   | { mode: "delete"; pageId: string }
   | null;
+
+type LayerDeleteDialogState = { childIndex?: number; label: string; layerId: string } | null;
 
 const pagePresets: PagePreset[] = [
   {
@@ -222,12 +285,22 @@ function adjacentVariant(current: VariantKey, direction: -1 | 1) {
 }
 
 type EditorActions = {
-  insertedBlocks: QuickBlock[];
+  hasPage: boolean;
+  insertedBlocks: InsertedBlock[];
+  insertedSections: InsertedSection[];
   selected: SelectedNode;
+  selectedLayerId: string | null;
   lastAction: string;
-  choose: (node: SelectedNode, source: string) => void;
+  choose: (node: SelectedNode, source: string, layerId?: string | null) => void;
   addBlock: (block: QuickBlock, source: string) => void;
+  addSection: (section: SectionPreset, source: string) => void;
+  isLayerCollapsed: (layerId: string) => boolean;
+  requestLayerDelete: (layerId: string, label: string) => void;
+  requestSectionChildDelete: (sectionId: string, childIndex: number, label: string) => void;
   resize: (scope: string, layout: Record<string, number>) => void;
+  toggleLayerCollapse: (layerId: string) => void;
+  toggleLayerVisibility: (layerId: string) => void;
+  toggleSectionChildVisibility: (sectionId: string, childIndex: number) => void;
 };
 
 function IconButton({ label, children }: { label: string; children: ReactNode }) {
@@ -293,36 +366,9 @@ function ProjectBar() {
   );
 }
 
-function SidebarItem({
-  children,
-  active = false,
-  indent = 0,
-  onClick,
-}: {
-  children: ReactNode;
-  active?: boolean;
-  indent?: number;
-  onClick?: () => void;
-}) {
-  return (
-    <Button
-      className={
-        "h-8 w-full justify-start gap-2 rounded-md pr-2 text-left text-xs font-normal transition " +
-        (active
-          ? "bg-orange-100 font-medium text-orange-600"
-          : "text-zinc-700 hover:bg-zinc-100")
-      }
-      onClick={onClick}
-      style={{ paddingLeft: 9 + indent * 14 }}
-      type="button"
-      variant="ghost"
-    >
-      {children}
-    </Button>
-  );
-}
-
 function QuickInsert({ actions, rail = false }: { actions: EditorActions; rail?: boolean }) {
+  const [library, setLibrary] = useState<"blocks" | "sections">("blocks");
+
   return (
     <section className={rail ? "flex items-center gap-2" : "border-t border-zinc-200 p-4"}>
       {!rail && (
@@ -340,38 +386,68 @@ function QuickInsert({ actions, rail = false }: { actions: EditorActions; rail?:
           />
         </div>
       )}
-      <div className={rail ? "flex gap-2" : "grid grid-cols-2 gap-2"}>
-        {quickBlocks.map((block) => {
-          const Icon = block.icon;
-          return (
-            <Button
-              className={
-                "h-auto cursor-grab border-zinc-200 bg-white p-0 font-normal text-zinc-900 shadow-none transition hover:border-orange-300 hover:bg-orange-50 active:cursor-grabbing " +
-                (rail ? "w-24" : "")
-              }
-              draggable
-              key={block.id}
-              onClick={() => actions.addBlock(block.id, "quick insert")}
-              onDragStart={(event) => event.dataTransfer.setData("text/plain", block.id)}
-              variant="outline"
-            >
-              <span
+      {!rail && (
+        <div className="mb-3 grid grid-cols-2 rounded-md bg-zinc-100 p-0.5">
+          <Button aria-pressed={library === "blocks"} className="h-7 text-[11px] aria-pressed:bg-white aria-pressed:text-zinc-950 aria-pressed:shadow-sm" onClick={() => setLibrary("blocks")} size="sm" type="button" variant="ghost">Blocks</Button>
+          <Button aria-pressed={library === "sections"} className="h-7 text-[11px] aria-pressed:bg-white aria-pressed:text-zinc-950 aria-pressed:shadow-sm" onClick={() => setLibrary("sections")} size="sm" type="button" variant="ghost">Sections</Button>
+        </div>
+      )}
+      {(rail || library === "blocks") ? (
+        <div className={rail ? "flex gap-2" : "grid grid-cols-2 gap-2"}>
+          {quickBlocks.map((block) => {
+            const Icon = block.icon;
+            return (
+              <Button
                 className={
-                  rail
-                    ? "flex items-center justify-center gap-2 px-2 py-2"
-                    : "grid place-items-center gap-1.5 py-3"
+                  "h-auto cursor-grab border-zinc-200 bg-white p-0 font-normal text-zinc-900 shadow-none transition hover:border-orange-300 hover:bg-orange-50 active:cursor-grabbing disabled:cursor-not-allowed " +
+                  (rail ? "w-24" : "")
                 }
+                disabled={!actions.hasPage}
+                draggable={actions.hasPage}
+                key={block.id}
+                onClick={() => actions.addBlock(block.id, "quick insert")}
+                onDragStart={(event) => event.dataTransfer.setData("text/plain", block.id)}
+                variant="outline"
               >
-                <Icon className="size-4 text-zinc-500" />
-                <span className="text-[11px]">{block.label}</span>
-              </span>
-            </Button>
-          );
-        })}
-      </div>
+                <span
+                  className={
+                    rail
+                      ? "flex items-center justify-center gap-2 px-2 py-2"
+                      : "grid place-items-center gap-1.5 py-3"
+                  }
+                >
+                  <Icon className="size-4 text-zinc-500" />
+                  <span className="text-[11px]">{block.label}</span>
+                </span>
+              </Button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="grid gap-1.5">
+          {sectionPresets.map((section) => {
+            const Icon = section.icon;
+            return (
+              <Button
+                className="h-auto justify-start border-zinc-200 bg-white px-2.5 py-2 text-left font-normal text-zinc-900 shadow-none hover:border-orange-300 hover:bg-orange-50 disabled:cursor-not-allowed"
+                disabled={!actions.hasPage}
+                key={section.id}
+                onClick={() => actions.addSection(section, "section library")}
+                variant="outline"
+              >
+                <Icon className="size-4 shrink-0 text-zinc-500" />
+                <span className="grid min-w-0 gap-0.5">
+                  <span className="text-[11px] font-medium">{section.label}</span>
+                  <span className="truncate text-[10px] text-zinc-500">{section.description}</span>
+                </span>
+              </Button>
+            );
+          })}
+        </div>
+      )}
       {!rail && (
         <p className="mt-3 flex items-center gap-1.5 text-[10px] text-zinc-500">
-          <GripVertical className="size-3" /> Drag a block onto your page
+          {actions.hasPage ? <><GripVertical className="size-3" /> Drag a block onto your page</> : "Add a page before inserting blocks or sections."}
         </p>
       )}
     </section>
@@ -397,14 +473,14 @@ function PageListItem({
     <div
       className={
         "group flex h-8 items-center rounded-md transition " +
-        (active ? "bg-orange-100 text-orange-600" : "text-zinc-700 hover:bg-zinc-100")
+        (active ? "bg-orange-100 text-orange-600 hover:text-zinc-950" : "text-zinc-700 hover:bg-zinc-100")
       }
     >
       <Button
         aria-current={active ? "page" : undefined}
         className={
           "h-full min-w-0 flex-1 justify-start gap-2 rounded-md px-2.5 text-left text-xs font-normal hover:bg-transparent " +
-          (active ? "font-medium text-orange-600 hover:text-orange-600" : "text-zinc-700 hover:text-zinc-700")
+          (active ? "font-medium text-orange-600 group-hover:text-zinc-950 hover:text-zinc-950" : "text-zinc-700 hover:text-zinc-700")
         }
         onClick={onSelect}
         type="button"
@@ -417,7 +493,8 @@ function PageListItem({
         <DropdownMenuTrigger
           aria-label={`Open actions for ${page.name}`}
           className={
-            "mr-1 grid size-5 shrink-0 place-items-center rounded-md outline-none transition hover:bg-orange-200 hover:text-orange-700 focus-visible:ring-2 focus-visible:ring-orange-500 " +
+            "mr-1 grid size-5 shrink-0 place-items-center rounded-md outline-none transition focus-visible:ring-2 focus-visible:ring-orange-500 " +
+            (active ? "text-orange-600 group-hover:text-zinc-950 hover:bg-orange-200 hover:text-zinc-950 " : "text-zinc-500 hover:bg-zinc-200 hover:text-zinc-950 ") +
             (active ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100")
           }
           type="button"
@@ -513,6 +590,133 @@ function PageManagementDialog({
         </Dialog.Viewport>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+function LayerDeleteDialog({
+  dialog,
+  onClose,
+  onConfirm,
+}: {
+  dialog: LayerDeleteDialogState;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  if (!dialog) return null;
+
+  return (
+    <Dialog.Root onOpenChange={(open) => !open && onClose()} open>
+      <Dialog.Portal>
+        <Dialog.Backdrop className="fixed inset-0 z-[80] bg-zinc-950/25 backdrop-blur-[1px]" />
+        <Dialog.Viewport className="fixed inset-0 z-[81] grid place-items-center p-4">
+          <Dialog.Popup className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-5 shadow-2xl outline-none">
+            <Dialog.Title className="text-base font-semibold text-zinc-950">Delete layer?</Dialog.Title>
+            <Dialog.Description className="mt-1.5 text-sm leading-5 text-zinc-500">
+              Delete {dialog.label}? This layer cannot be restored.
+            </Dialog.Description>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button onClick={onClose} type="button" variant="outline">Cancel</Button>
+              <Button className="bg-red-600 text-white hover:bg-red-700" onClick={onConfirm} type="button">Delete layer</Button>
+            </div>
+          </Dialog.Popup>
+        </Dialog.Viewport>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+function LayerTreeItem({
+  active,
+  collapsed = false,
+  collapsible = false,
+  depth = 0,
+  inheritedHidden = false,
+  icon: Icon,
+  label,
+  onDelete,
+  onSelect,
+  onToggleCollapse,
+  onToggleVisibility,
+  visible,
+}: {
+  active: boolean;
+  collapsed?: boolean;
+  collapsible?: boolean;
+  depth?: number;
+  inheritedHidden?: boolean;
+  icon: LucideIcon;
+  label: string;
+  onDelete: () => void;
+  onSelect: () => void;
+  onToggleCollapse?: () => void;
+  onToggleVisibility: () => void;
+  visible: boolean;
+}) {
+  const visuallyHidden = inheritedHidden || !visible;
+
+  return (
+    <div
+      className={
+        "group flex h-8 items-center rounded-md transition " +
+        (active ? "bg-orange-100 text-orange-600 hover:text-zinc-950" : "text-zinc-700 hover:bg-zinc-100")
+      }
+      style={{ paddingLeft: 8 + depth * 14 }}
+    >
+      {collapsible ? (
+        <button
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${label}`}
+          className={"grid size-5 shrink-0 place-items-center rounded bg-transparent " + (active ? "text-orange-600 group-hover:text-zinc-950 hover:bg-orange-200 hover:text-zinc-950" : "text-zinc-500 hover:bg-zinc-200 hover:text-zinc-950")}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleCollapse?.();
+          }}
+          type="button"
+        >
+          <ChevronDown className={"size-3 transition-transform " + (collapsed ? "-rotate-90" : "")} />
+        </button>
+      ) : null}
+      <Button
+        aria-current={active ? "true" : undefined}
+        className={
+          "h-full min-w-0 flex-1 justify-start gap-2 rounded-md px-1 text-left text-xs font-normal hover:bg-transparent " +
+          (active ? "font-medium text-orange-600 group-hover:text-zinc-950 hover:text-zinc-950" : "text-zinc-700 hover:text-zinc-700")
+        }
+        onClick={onSelect}
+        type="button"
+        variant="ghost"
+      >
+        <Icon className="size-3.5 shrink-0" />
+        <span className={visuallyHidden ? "truncate text-zinc-400 line-through" : "truncate"}>{label}</span>
+      </Button>
+      <div className="mr-1 flex shrink-0 items-center gap-0.5">
+        <Button
+          aria-label={`${visible ? "Hide" : "Show"} ${label}`}
+          className={"size-5 bg-transparent " + (active ? "text-orange-600 group-hover:text-zinc-950 hover:bg-orange-200 hover:text-zinc-950" : "text-zinc-500 hover:bg-zinc-200 hover:text-zinc-950")}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleVisibility();
+          }}
+          size="icon-xs"
+          type="button"
+          variant="ghost"
+        >
+          {visible ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
+        </Button>
+        <Button
+          aria-label={`Delete ${label}`}
+          className={"size-5 bg-transparent hover:text-red-600 focus:opacity-100 " + (active ? "text-orange-600 opacity-60 hover:bg-orange-200 group-hover:opacity-100" : "text-zinc-400 opacity-0 hover:bg-red-50 group-hover:opacity-100")}
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete();
+          }}
+          size="icon-xs"
+          type="button"
+          variant="ghost"
+        >
+          <Trash2 className="size-3" />
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -657,14 +861,72 @@ function Navigator({
               <div className="mb-2 flex items-center justify-between px-1 text-xs font-semibold">
                 Layers <ListFilter className="size-3.5 text-zinc-500" />
               </div>
-              <SidebarItem onClick={() => actions.choose("section", "layer tree")}><ChevronDown className="size-3" /><PanelTop className="size-3.5" /> Navigation</SidebarItem>
-              <SidebarItem onClick={() => actions.choose("section", "layer tree")}><ChevronDown className="size-3" /><LayoutTemplate className="size-3.5" /> Hero section</SidebarItem>
-              <SidebarItem indent={1} onClick={() => actions.choose("section", "layer tree")}><ChevronDown className="size-3" /><LayoutTemplate className="size-3.5" /> Content</SidebarItem>
-              <SidebarItem indent={2}><Type className="size-3.5" /> Eyebrow</SidebarItem>
-              <SidebarItem active={actions.selected === "heading"} indent={2} onClick={() => actions.choose("heading", "layer tree")}><Type className="size-3.5" /> Hero heading</SidebarItem>
-              <SidebarItem indent={2}><Type className="size-3.5" /> Description</SidebarItem>
-              <SidebarItem active={actions.selected === "hero-image"} indent={1} onClick={() => actions.choose("hero-image", "layer tree")}><ImageIcon className="size-3.5" /> Hero image</SidebarItem>
-              <SidebarItem active={actions.selected === "gallery"} onClick={() => actions.choose("gallery", "layer tree")}><ChevronDown className="size-3" /><LayoutTemplate className="size-3.5" /> Selected spaces</SidebarItem>
+              {!actions.hasPage ? (
+                <Empty className="min-h-32 gap-2 border-0 bg-zinc-50/70 p-3">
+                  <EmptyHeader className="gap-1">
+                    <EmptyTitle className="text-xs">No page selected</EmptyTitle>
+                    <EmptyDescription className="text-[10px]">Add or select a page to view its layers.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              ) : actions.insertedSections.length || actions.insertedBlocks.length ? (
+                <div className="space-y-0.5">
+                  {actions.insertedSections.map((insertedSection) => {
+                    const section = sectionPresets.find((preset) => preset.id === insertedSection.preset);
+                    if (!section) return null;
+                    const Icon = section.icon;
+                    const collapsed = actions.isLayerCollapsed(insertedSection.id);
+                    return (
+                      <div key={insertedSection.id}>
+                        <LayerTreeItem
+                          active={actions.selectedLayerId === insertedSection.id}
+                          collapsed={collapsed}
+                          collapsible
+                          icon={Icon}
+                          label={section.label}
+                          onDelete={() => actions.requestLayerDelete(insertedSection.id, section.label)}
+                          onSelect={() => actions.choose(section.target, "layer tree", insertedSection.id)}
+                          onToggleCollapse={() => actions.toggleLayerCollapse(insertedSection.id)}
+                          onToggleVisibility={() => actions.toggleLayerVisibility(insertedSection.id)}
+                          visible={insertedSection.visible}
+                        />
+                        {!collapsed && <div className="ml-5 space-y-0.5 border-l border-zinc-200 pl-1.5">
+                          {section.layers.map((layer, layerIndex) => {
+                            if (insertedSection.deletedChildIndexes.includes(layerIndex)) return null;
+                            const LayerIcon = layer.icon;
+                            const layerId = `${insertedSection.id}:${layerIndex}`;
+                            return <LayerTreeItem
+                              active={actions.selectedLayerId === layerId}
+                              depth={0}
+                              icon={LayerIcon}
+                              inheritedHidden={!insertedSection.visible}
+                              key={layerId}
+                              label={layer.label}
+                              onDelete={() => actions.requestSectionChildDelete(insertedSection.id, layerIndex, layer.label)}
+                              onSelect={() => actions.choose(layer.target, "layer tree", layerId)}
+                              onToggleVisibility={() => actions.toggleSectionChildVisibility(insertedSection.id, layerIndex)}
+                              visible={!insertedSection.hiddenChildIndexes.includes(layerIndex)}
+                            />;
+                          })}
+                        </div>}
+                      </div>
+                    );
+                  })}
+                  {actions.insertedBlocks.map((block) => {
+                    const definition = quickBlocks.find((candidate) => candidate.id === block.kind);
+                    if (!definition) return null;
+                    const Icon = definition.icon;
+                    const target = blockTargets[block.kind];
+                    return <LayerTreeItem active={actions.selectedLayerId === block.id} icon={Icon} key={block.id} label={definition.label} onDelete={() => actions.requestLayerDelete(block.id, definition.label)} onSelect={() => actions.choose(target, "layer tree", block.id)} onToggleVisibility={() => actions.toggleLayerVisibility(block.id)} visible={block.visible} />;
+                  })}
+                </div>
+              ) : (
+                <Empty className="min-h-32 gap-2 border-0 bg-zinc-50/70 p-3">
+                  <EmptyHeader className="gap-1">
+                    <EmptyTitle className="text-xs">No layers yet</EmptyTitle>
+                    <EmptyDescription className="text-[10px]">Use Quick insert to add blocks or sections.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              )}
             </section>
           </ScrollArea>
         </ResizablePanel>
@@ -833,6 +1095,74 @@ function CanvasToolbar({
   );
 }
 
+function PreviewBlock({ actions, block }: { actions: EditorActions; block: InsertedBlock }) {
+  const definition = quickBlocks.find((candidate) => candidate.id === block.kind);
+  if (!definition) return null;
+  const Icon = definition.icon;
+  const selected = actions.selectedLayerId === block.id;
+  const target = blockTargets[block.kind];
+
+  return (
+    <button
+      aria-pressed={selected}
+      className={
+        "group/block relative w-full rounded-lg border bg-white p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 " +
+        (selected ? "border-orange-500 ring-2 ring-orange-200" : "border-zinc-200 hover:border-orange-300")
+      }
+      onClick={() => actions.choose(target, "canvas", block.id)}
+      type="button"
+    >
+      <span className="flex items-center gap-2 text-xs font-medium text-zinc-900">
+        <span className="grid size-7 place-items-center rounded-md bg-zinc-100 text-zinc-500 group-hover/block:bg-orange-100 group-hover/block:text-orange-700"><Icon className="size-3.5" /></span>
+        {definition.label}
+      </span>
+      {block.kind === "heading" && <span className="mt-4 block text-2xl font-semibold tracking-tight text-zinc-900">A clear heading for your page</span>}
+      {block.kind === "text" && <span className="mt-3 block max-w-xl text-sm leading-6 text-zinc-500">Add supporting copy that gives visitors the context they need.</span>}
+      {block.kind === "image" && <span className="mt-3 block h-28 rounded-md bg-linear-to-br from-zinc-100 to-zinc-200" />}
+      {block.kind === "button" && <span className="mt-3 inline-flex rounded-md bg-zinc-900 px-3 py-2 text-xs font-medium text-white">Call to action</span>}
+      {block.kind === "divider" && <span className="mt-4 block h-px bg-zinc-200" />}
+      {block.kind === "grid" && <span className="mt-3 grid grid-cols-3 gap-2">{[0, 1, 2].map((cell) => <span className="h-16 rounded-md bg-zinc-100" key={cell} />)}</span>}
+      {block.kind === "stack" && <span className="mt-3 grid gap-2">{[0, 1, 2].map((item) => <span className="h-5 rounded-md bg-zinc-100" key={item} />)}</span>}
+      {block.kind === "box" && <span className="mt-3 block h-20 rounded-md border border-dashed border-zinc-300 bg-zinc-50" />}
+      {block.kind === "section" && <span className="mt-3 block rounded-md bg-zinc-50 p-4 text-xs text-zinc-500">A full-width section container</span>}
+    </button>
+  );
+}
+
+function PreviewSection({ actions, section: insertedSection }: { actions: EditorActions; section: InsertedSection }) {
+  const section = sectionPresets.find((preset) => preset.id === insertedSection.preset);
+  if (!section) return null;
+  const Icon = section.icon;
+  const selected = actions.selectedLayerId === insertedSection.id;
+  const visibleLayers = section.layers.filter((_, index) => !insertedSection.deletedChildIndexes.includes(index) && !insertedSection.hiddenChildIndexes.includes(index));
+
+  return (
+    <button
+      aria-pressed={selected}
+      className={
+        "group/section w-full rounded-xl border bg-zinc-50 p-5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 " +
+        (selected ? "border-orange-500 ring-2 ring-orange-200" : "border-zinc-200 hover:border-orange-300")
+      }
+      onClick={() => actions.choose(section.target, "canvas", insertedSection.id)}
+      type="button"
+    >
+      <span className="flex items-center gap-2">
+        <span className="grid size-8 place-items-center rounded-lg bg-white text-zinc-500 shadow-sm group-hover/section:bg-orange-100 group-hover/section:text-orange-700"><Icon className="size-4" /></span>
+        <span className="grid gap-0.5">
+          <span className="text-sm font-semibold text-zinc-900">{section.label}</span>
+          <span className="text-xs text-zinc-500">{section.description}</span>
+        </span>
+      </span>
+      <span className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {visibleLayers.map((layer, index) => {
+          const LayerIcon = layer.icon;
+          return <span className="flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-600" key={index}><LayerIcon className="size-3.5 text-zinc-400" /> {layer.label}</span>;
+        })}
+      </span>
+    </button>
+  );
+}
+
 function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }: { actions: EditorActions; artboardHeight: number; artboardRef: React.RefObject<HTMLElement | null>; isResizing: boolean; viewport: CanvasViewport }) {
   const [dragging, setDragging] = useState(false);
   const compactPreview = viewport.width < 768;
@@ -868,19 +1198,26 @@ function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }
         )}
       </header>
       <section className="grid place-items-center bg-white px-8 text-center" style={{ minHeight: artboardHeight - browserHeaderHeight }}>
-        <Empty className="max-w-sm flex-none gap-4 border-0 p-0">
-          <EmptyHeader className={compactPreview ? "gap-1.5" : "gap-3"}>
-            <EmptyMedia className={(compactPreview ? "size-9 rounded-lg [&>svg]:size-4" : "size-12") + " bg-zinc-100 text-zinc-500"}>
-              <Globe2 />
-            </EmptyMedia>
-            <EmptyTitle className={compactPreview ? "text-base" : "text-xl"}>
-              Your website preview
-            </EmptyTitle>
-            <EmptyDescription className={compactPreview ? "text-xs" : "text-base"}>
-              Your page will appear here as you build it.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
+        {actions.insertedSections.some((section) => section.visible) || actions.insertedBlocks.some((block) => block.visible) ? (
+          <div className="w-full max-w-5xl space-y-4 py-8 text-left">
+            {actions.insertedSections.filter((section) => section.visible).map((section) => <PreviewSection actions={actions} key={section.id} section={section} />)}
+            {actions.insertedBlocks.filter((block) => block.visible).map((block) => <PreviewBlock actions={actions} block={block} key={block.id} />)}
+          </div>
+        ) : (
+          <Empty className="max-w-sm flex-none gap-4 border-0 p-0">
+            <EmptyHeader className={compactPreview ? "gap-1.5" : "gap-3"}>
+              <EmptyMedia className={(compactPreview ? "size-9 rounded-lg [&>svg]:size-4" : "size-12") + " bg-zinc-100 text-zinc-500"}>
+                <Globe2 />
+              </EmptyMedia>
+              <EmptyTitle className={compactPreview ? "text-base" : "text-xl"}>
+                Your website preview
+              </EmptyTitle>
+              <EmptyDescription className={compactPreview ? "text-xs" : "text-base"}>
+                Your page will appear here as you build it.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
       </section>
       {dragging && <div className="absolute inset-x-3 top-14 bottom-3 grid place-items-center border-2 border-dashed border-orange-500 bg-orange-50/90 text-sm font-medium text-orange-700">Drop to add a block</div>}
     </article>
@@ -943,7 +1280,7 @@ function Canvas({ actions, compact, onViewportChange, page, variant, viewport }:
     const observer = new ResizeObserver(measure);
     observer.observe(artboard);
     return () => observer.disconnect();
-  }, [viewport.width, actions.insertedBlocks.length]);
+  }, [viewport.width, actions.insertedBlocks.length, actions.insertedSections.length]);
 
   useEffect(() => {
     const scrollViewport = scrollViewportRef.current;
@@ -1325,20 +1662,137 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
   const current: VariantKey = showVariantSwitcher && (requested === "b" || requested === "c") ? requested : "a";
   const [selected, setSelected] = useState<SelectedNode>("heading");
   const [lastAction, setLastAction] = useState("Opened Forma studio");
-  const [insertedBlocks, setInsertedBlocks] = useState<QuickBlock[]>([]);
+  const [pageContent, setPageContent] = useState<Record<string, PageContent>>({});
   const [compact, setCompact] = useState(false);
   const [viewport, setViewport] = useState<CanvasViewport>(canvasViewportPresets.desktop);
   const [pages, setPages] = useState<BuilderPage[]>(initialPages);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [pageDialog, setPageDialog] = useState<PageDialogState>(null);
+  const [layerDeleteDialog, setLayerDeleteDialog] = useState<LayerDeleteDialogState>(null);
   const [pageNameDraft, setPageNameDraft] = useState("");
   const pageSequenceRef = useRef(0);
+  const contentSequenceRef = useRef(0);
+  const [collapsedLayerIds, setCollapsedLayerIds] = useState<string[]>([]);
   const changeVariant = useCallback((variant: VariantKey) => { const next = new URLSearchParams(searchParams.toString()); next.set("variant", variant); router.replace(pathname + "?" + next.toString(), { scroll: false }); setLastAction("Switched to " + variants[variant].name); }, [pathname, router, searchParams]);
-  const choose = useCallback((node: SelectedNode, source: string) => { setSelected(node); setLastAction("Selected " + selectionDetails[node].label + " from " + source); }, []);
-  const addBlock = useCallback((block: QuickBlock, source: string) => { setInsertedBlocks((currentBlocks) => [...currentBlocks, block]); choose(blockTargets[block], source + " · added " + block); }, [choose]);
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
+  const choose = useCallback((node: SelectedNode, source: string, layerId: string | null = null) => { setSelected(node); setSelectedLayerId(layerId); setLastAction("Selected " + selectionDetails[node].label + " from " + source); }, []);
+  const addBlock = useCallback((block: QuickBlock, source: string) => {
+    if (!selectedPageId) {
+      setLastAction("Add a page before inserting blocks");
+      return;
+    }
+    const insertedBlock: InsertedBlock = { id: `block-${contentSequenceRef.current += 1}`, kind: block, visible: true };
+    setPageContent((currentContent) => {
+      const content = currentContent[selectedPageId] ?? emptyPageContent;
+      return {
+        ...currentContent,
+        [selectedPageId]: { ...content, insertedBlocks: [...content.insertedBlocks, insertedBlock] },
+      };
+    });
+    choose(blockTargets[block], source + " · added " + block, insertedBlock.id);
+  }, [choose, selectedPageId]);
+  const addSection = useCallback((section: SectionPreset, source: string) => {
+    if (!selectedPageId) {
+      setLastAction("Add a page before inserting sections");
+      return;
+    }
+    const insertedSection: InsertedSection = { deletedChildIndexes: [], hiddenChildIndexes: [], id: `section-${contentSequenceRef.current += 1}`, preset: section.id, visible: true };
+    setPageContent((currentContent) => {
+      const content = currentContent[selectedPageId] ?? emptyPageContent;
+      return {
+        ...currentContent,
+        [selectedPageId]: { ...content, insertedSections: [...content.insertedSections, insertedSection] },
+      };
+    });
+    choose(section.target, source + " · added " + section.label, insertedSection.id);
+  }, [choose, selectedPageId]);
   const resize = useCallback((scope: string, layout: Record<string, number>) => { const dimensions = Object.entries(layout).map(([id, size]) => `${id} ${Math.round(size)}%`).join(" · "); setLastAction(`${scope} resized · ${dimensions}`); }, []);
   const changeViewport = useCallback((nextViewport: CanvasViewport) => { setViewport(nextViewport); setLastAction(`Canvas changed to ${nextViewport.label} · ${nextViewport.width} px`); }, []);
-  const selectPage = useCallback((page: BuilderPage) => { setSelectedPageId(page.id); setLastAction(`Selected ${page.name} page`); }, []);
+  const isLayerCollapsed = useCallback((layerId: string) => collapsedLayerIds.includes(layerId), [collapsedLayerIds]);
+  const toggleLayerCollapse = useCallback((layerId: string) => {
+    setCollapsedLayerIds((currentIds) => currentIds.includes(layerId) ? currentIds.filter((id) => id !== layerId) : [...currentIds, layerId]);
+  }, []);
+  const toggleLayerVisibility = useCallback((layerId: string) => {
+    if (!selectedPageId) return;
+    setPageContent((currentContent) => {
+      const content = currentContent[selectedPageId] ?? emptyPageContent;
+      return {
+        ...currentContent,
+        [selectedPageId]: {
+          insertedBlocks: content.insertedBlocks.map((block) => block.id === layerId ? { ...block, visible: !block.visible } : block),
+          insertedSections: content.insertedSections.map((section) => section.id === layerId ? { ...section, visible: !section.visible } : section),
+        },
+      };
+    });
+  }, [selectedPageId]);
+  const toggleSectionChildVisibility = useCallback((sectionId: string, childIndex: number) => {
+    if (!selectedPageId) return;
+    setPageContent((currentContent) => {
+      const content = currentContent[selectedPageId] ?? emptyPageContent;
+      return {
+        ...currentContent,
+        [selectedPageId]: {
+          ...content,
+          insertedSections: content.insertedSections.map((section) => {
+            if (section.id !== sectionId) return section;
+            const hiddenChildIndexes = section.hiddenChildIndexes.includes(childIndex)
+              ? section.hiddenChildIndexes.filter((index) => index !== childIndex)
+              : [...section.hiddenChildIndexes, childIndex];
+            return { ...section, hiddenChildIndexes };
+          }),
+        },
+      };
+    });
+  }, [selectedPageId]);
+  const removeLayer = useCallback((layerId: string) => {
+    if (!selectedPageId) return;
+    setPageContent((currentContent) => {
+      const content = currentContent[selectedPageId] ?? emptyPageContent;
+      return {
+        ...currentContent,
+        [selectedPageId]: {
+          insertedBlocks: content.insertedBlocks.filter((block) => block.id !== layerId),
+          insertedSections: content.insertedSections.filter((section) => section.id !== layerId),
+        },
+      };
+    });
+    setCollapsedLayerIds((currentIds) => currentIds.filter((id) => id !== layerId));
+    setSelectedLayerId((currentId) => currentId === layerId || currentId?.startsWith(`${layerId}:`) ? null : currentId);
+    setLastAction("Deleted layer");
+  }, [selectedPageId]);
+  const requestLayerDelete = useCallback((layerId: string, label: string) => {
+    setLayerDeleteDialog({ layerId, label });
+  }, []);
+  const requestSectionChildDelete = useCallback((sectionId: string, childIndex: number, label: string) => {
+    setLayerDeleteDialog({ childIndex, label, layerId: sectionId });
+  }, []);
+  const removeSectionChild = useCallback((sectionId: string, childIndex: number) => {
+    if (!selectedPageId) return;
+    setPageContent((currentContent) => {
+      const content = currentContent[selectedPageId] ?? emptyPageContent;
+      return {
+        ...currentContent,
+        [selectedPageId]: {
+          ...content,
+          insertedSections: content.insertedSections.map((section) => section.id === sectionId
+            ? { ...section, deletedChildIndexes: [...section.deletedChildIndexes, childIndex], hiddenChildIndexes: section.hiddenChildIndexes.filter((index) => index !== childIndex) }
+            : section),
+        },
+      };
+    });
+    setSelectedLayerId((currentId) => currentId === `${sectionId}:${childIndex}` ? null : currentId);
+    setLastAction("Deleted layer");
+  }, [selectedPageId]);
+  const confirmLayerDelete = useCallback(() => {
+    if (!layerDeleteDialog) return;
+    if (layerDeleteDialog.childIndex === undefined) {
+      removeLayer(layerDeleteDialog.layerId);
+    } else {
+      removeSectionChild(layerDeleteDialog.layerId, layerDeleteDialog.childIndex);
+    }
+    setLayerDeleteDialog(null);
+  }, [layerDeleteDialog, removeLayer, removeSectionChild]);
+  const selectPage = useCallback((page: BuilderPage) => { setSelectedPageId(page.id); setSelectedLayerId(null); setLastAction(`Selected ${page.name} page`); }, []);
   const addPage = useCallback((preset: PagePreset) => {
     const page: BuilderPage = {
       id: `${preset.id}-${pageSequenceRef.current += 1}`,
@@ -1348,6 +1802,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
     };
     setPages((currentPages) => [...currentPages, page]);
     setSelectedPageId(page.id);
+    setSelectedLayerId(null);
     setLastAction(`Added ${page.name}`);
   }, [pages]);
   const renamePage = useCallback((page: BuilderPage) => {
@@ -1378,16 +1833,19 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
     const pageIndex = pages.findIndex((candidate) => candidate.id === page.id);
     const remainingPages = pages.filter((candidate) => candidate.id !== page.id);
     setPages(remainingPages);
+    setPageContent((currentContent) => Object.fromEntries(Object.entries(currentContent).filter(([pageId]) => pageId !== page.id)));
     if (selectedPageId === page.id) {
       setSelectedPageId(remainingPages[Math.min(pageIndex, remainingPages.length - 1)]?.id ?? null);
+      setSelectedLayerId(null);
     }
     setLastAction(`Deleted ${page.name}`);
     closePageDialog();
   }, [closePageDialog, pageDialog, pageNameDraft, pages, selectedPageId]);
   useEffect(() => { const media = window.matchMedia("(max-width: 899px)"); const sync = () => setCompact(media.matches); sync(); media.addEventListener("change", sync); return () => media.removeEventListener("change", sync); }, []);
   useEffect(() => { if (!showVariantSwitcher) return; function handleKeyDown(event: KeyboardEvent) { const target = event.target as HTMLElement | null; if (target?.closest("input, textarea, [contenteditable='true'], [role='separator']")) return; if (event.key === "ArrowLeft") changeVariant(adjacentVariant(current, -1)); if (event.key === "ArrowRight") changeVariant(adjacentVariant(current, 1)); } window.addEventListener("keydown", handleKeyDown); return () => window.removeEventListener("keydown", handleKeyDown); }, [changeVariant, current, showVariantSwitcher]);
-  const actions: EditorActions = { insertedBlocks, selected, lastAction, choose, addBlock, resize };
   const selectedPage = pages.find((page) => page.id === selectedPageId) ?? null;
+  const activePageContent = selectedPageId ? pageContent[selectedPageId] ?? emptyPageContent : emptyPageContent;
+  const actions: EditorActions = { hasPage: Boolean(selectedPage), insertedBlocks: activePageContent.insertedBlocks, insertedSections: activePageContent.insertedSections, selected, selectedLayerId, lastAction, choose, addBlock, addSection, isLayerCollapsed, requestLayerDelete, requestSectionChildDelete, resize, toggleLayerCollapse, toggleLayerVisibility, toggleSectionChildVisibility };
   const dialogPage = pageDialog ? pages.find((page) => page.id === pageDialog.pageId) ?? null : null;
-  return <><FormaVariant actions={actions} compact={compact} onAddPage={addPage} onDeletePage={deletePage} onRenamePage={renamePage} onSelectPage={selectPage} onViewportChange={changeViewport} page={selectedPage} pages={pages} selectedPageId={selectedPageId} variant={current} viewport={viewport} /><PageManagementDialog dialog={pageDialog} draftName={pageNameDraft} onClose={closePageDialog} onConfirm={confirmPageDialog} onDraftNameChange={setPageNameDraft} page={dialogPage} />{showVariantSwitcher && <PrototypeSwitcher current={current} onChange={changeVariant} />}</>;
+  return <><FormaVariant actions={actions} compact={compact} onAddPage={addPage} onDeletePage={deletePage} onRenamePage={renamePage} onSelectPage={selectPage} onViewportChange={changeViewport} page={selectedPage} pages={pages} selectedPageId={selectedPageId} variant={current} viewport={viewport} /><PageManagementDialog dialog={pageDialog} draftName={pageNameDraft} onClose={closePageDialog} onConfirm={confirmPageDialog} onDraftNameChange={setPageNameDraft} page={dialogPage} /><LayerDeleteDialog dialog={layerDeleteDialog} onClose={() => setLayerDeleteDialog(null)} onConfirm={confirmLayerDelete} />{showVariantSwitcher && <PrototypeSwitcher current={current} onChange={changeVariant} />}</>;
 }
