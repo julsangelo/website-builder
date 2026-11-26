@@ -259,7 +259,7 @@ const sectionPresetIcons: Record<string, LucideIcon> = {
 const nodeDragType = "application/x-forma-node";
 
 function nodeDetails(node: EditorNode) {
-  const block = quickBlocks.find((candidate) => candidate.id === node.type)!;
+  const block = quickBlocks.find((candidate) => candidate.id === node.type) ?? { label: "Input", icon: Type };
   const preset = node.metadata?.preset;
   return {
     label: typeof node.metadata?.label === "string" ? node.metadata.label : block.label,
@@ -635,6 +635,7 @@ function LayerTreeItem({
   inheritedHidden = false,
   icon: Icon,
   label,
+  nodeId,
   onDelete,
   onDragOver,
   onDragStart,
@@ -651,6 +652,7 @@ function LayerTreeItem({
   inheritedHidden?: boolean;
   icon: LucideIcon;
   label: string;
+  nodeId: string;
   onDelete: () => void;
   onDragOver?: (event: DragEvent<HTMLDivElement>) => void;
   onDragStart?: (event: DragEvent<HTMLDivElement>) => void;
@@ -673,6 +675,7 @@ function LayerTreeItem({
         (active ? "bg-orange-100 text-orange-600 hover:text-zinc-950" : "text-zinc-700 hover:bg-zinc-100")
       }
       draggable={Boolean(onDragStart)}
+      data-layer-node-id={nodeId}
       onDragOver={onDragOver}
       onDragStart={onDragStart}
       onDrop={onDrop}
@@ -755,6 +758,7 @@ function Layers({ actions, ids, inheritedHidden = false }: { actions: EditorActi
               icon={icon}
               inheritedHidden={inheritedHidden}
               label={label}
+              nodeId={id}
               onDelete={() => actions.requestLayerDelete(node)}
               onSelect={() => actions.choose(id)}
               onToggleCollapse={() => actions.toggleLayerCollapse(id)}
@@ -1183,32 +1187,62 @@ const sectionClasses: Record<string, string> = {
   footer: "bg-zinc-950 px-4 py-8 text-white",
 };
 
+const presetContainerClasses: Record<string, string> = {
+  "preset-card": "grid min-w-0 content-start gap-3 rounded-xl border border-zinc-200 bg-white p-5 text-zinc-900",
+  "preset-footer-navigation": "flex flex-wrap items-center justify-between gap-4 px-4 py-3",
+  "preset-form": "grid gap-3 rounded-lg border border-zinc-200 bg-white p-6",
+  "preset-links": "flex flex-wrap items-center gap-4 px-4 py-3",
+  "preset-questions": "divide-y divide-zinc-200 rounded-lg border border-zinc-200 px-4",
+  "preset-quote": "mx-auto grid max-w-3xl gap-4 rounded-lg bg-white p-8 text-zinc-900",
+  "preset-stat": "grid gap-2 rounded-lg bg-white p-7 text-center text-zinc-900 [&_h2]:text-5xl",
+};
+
 function PreviewNode({ actions, node, breakpoint }: { actions: EditorActions; node: EditorNode; breakpoint: Breakpoint }) {
   const page = actions.page;
   if (!node.visible || !page) return null;
   const { content, metadata } = node;
+  const appearance = typeof metadata?.appearance === "string" ? metadata.appearance : "";
   const children = node.childIds.map((id) => (
     <PreviewNode actions={actions} breakpoint={breakpoint} key={id} node={page.nodes[id]} />
   ));
   const style = resolveStyles(node, breakpoint);
-  const frame = (className: string, body?: ReactNode) => (
+  const frame = (className: string, body?: ReactNode, nested: ReactNode = children) => (
     <PreviewSelectable actions={actions} className={className} node={node} style={style}>
       {body}
-      {children}
+      {nested}
     </PreviewSelectable>
   );
 
   if (node.type === "section" && typeof metadata?.preset === "string") {
     return frame(sectionClasses[metadata.preset] ?? "bg-white");
   }
-  switch (metadata?.appearance) {
+  if (isContainer(node.type) && Object.hasOwn(presetContainerClasses, appearance)) {
+    return frame(presetContainerClasses[appearance]);
+  }
+  switch (appearance) {
     case "preset-grid":
       return frame("min-h-16 min-w-0 p-4");
     case "split-content":
-      return frame("min-h-80 min-w-0 justify-center " + (breakpoint === "base" ? "p-14" : "p-9"), <>
-        {content.title && <p>{content.title}</p>}
-        {content.body && <p>{content.body}</p>}
-      </>);
+      return frame("min-h-80 min-w-0 justify-center " + (breakpoint === "base" ? "p-14" : "p-9"));
+    case "preset-question": {
+      const triggerIndex = node.childIds.findIndex((id) => page.nodes[id].metadata?.disclosureTrigger === true && page.nodes[id].visible);
+      if (triggerIndex === -1) return frame("py-2 text-zinc-900");
+      return frame("py-2 text-zinc-900", (
+        <details open={metadata?.open === true}>
+          <summary className="cursor-pointer py-2 [&>div]:inline-block">{children[triggerIndex]}</summary>
+          {children.filter((_, index) => index !== triggerIndex)}
+        </details>
+      ), null);
+    }
+    case "preset-heading":
+      return frame("font-semibold tracking-tight", <h2>{content.title}</h2>);
+    case "preset-text":
+      return frame("text-sm whitespace-pre-line", <p>{content.body}</p>);
+    case "preset-button":
+      return frame("w-fit", <Button size="sm" type="button" variant="outline">{content.buttonLabel}</Button>);
+    case "preset-image":
+      if (content.imageUrl) style.backgroundImage ??= `url(${JSON.stringify(content.imageUrl)})`;
+      return frame("min-h-40 rounded-lg bg-linear-to-br from-[#d5c4ac] via-[#8e7159] to-[#455143] bg-cover bg-center", content.alt && <span className="sr-only">{content.alt}</span>);
     case "hero-eyebrow":
     case "content-media-eyebrow":
       return frame("w-fit rounded-md text-xs font-medium tracking-[0.18em] text-zinc-500 uppercase", content.body);
@@ -1224,7 +1258,7 @@ function PreviewNode({ actions, node, breakpoint }: { actions: EditorActions; no
     case "hero-image":
     case "content-media-media":
       if (content.imageUrl) style.backgroundImage ??= `url(${JSON.stringify(content.imageUrl)})`;
-      return frame("min-h-80 bg-cover bg-center " + (metadata.appearance === "hero-image"
+      return frame("min-h-80 bg-cover bg-center " + (appearance === "hero-image"
         ? "bg-linear-to-br from-[#8f765d] via-[#c7b08d] to-[#e6d9c5]"
         : "bg-linear-to-bl from-[#d7c7af] via-[#887764] to-[#3f433d]"), content.alt && <span className="sr-only">{content.alt}</span>);
     case "section":
@@ -1264,6 +1298,8 @@ function PreviewNode({ actions, node, breakpoint }: { actions: EditorActions; no
       return frame("bg-white p-4", <><Card className="border border-zinc-200 bg-white shadow-none"><CardContent className="flex items-center justify-between p-4"><span className="font-semibold text-zinc-900">{content.title}</span><span className="flex gap-4 text-sm text-zinc-600"><span>Studio</span><span>Work</span><span>Journal</span></span><Button size="sm">{content.buttonLabel}</Button></CardContent></Card></>);
     case "footer":
       return frame("bg-zinc-950 p-6", <><Card className="border-zinc-800 bg-zinc-950 text-zinc-200 shadow-none"><CardContent className="flex items-center justify-between p-4"><span className="font-semibold text-white">{content.title}</span><span className="text-xs text-zinc-500">{content.body}</span></CardContent></Card></>);
+    case "input":
+      return frame("rounded-md", <Input aria-label={content.body} placeholder={content.body} />);
   }
 }
 
@@ -1354,10 +1390,15 @@ function ImageUploadField({ onChange }: { onChange: (imageUrl: string) => void }
 
 function BlockContentEditor({ actions, block }: { actions: EditorActions; block: EditorNode }) {
   const { content } = block;
-  const showTitle = ["section", "stack", "heading", "card", "quote", "stat", "form", "navigation", "footer"].includes(block.type);
-  const showBody = ["section", "box", "stack", "text", "card", "quote", "stat", "accordion", "form", "footer"].includes(block.type);
+  const appearance = block.metadata?.appearance;
+  const structural = isContainer(block.type) && (block.metadata?.preset || appearance === "split-content" || (typeof appearance === "string" && Object.hasOwn(presetContainerClasses, appearance)) || appearance === "preset-question" || appearance === "preset-grid");
+  const showTitle = !structural && ["section", "stack", "heading", "card", "quote", "stat", "form", "navigation", "footer"].includes(block.type);
+  const showBody = !structural && ["section", "box", "stack", "text", "card", "quote", "stat", "accordion", "form", "footer"].includes(block.type);
   const showButtonLabel = ["button", "card", "form", "navigation"].includes(block.type);
   const showImageUrl = block.type === "image";
+  const showPlaceholder = block.type === "input";
+
+  if (!showTitle && !showBody && !showButtonLabel && !showImageUrl && !showPlaceholder) return null;
 
   return (
     <div className="mt-4 space-y-3 border-t border-zinc-200 pt-4">
@@ -1365,6 +1406,7 @@ function BlockContentEditor({ actions, block }: { actions: EditorActions; block:
       {showTitle && <label className="grid gap-1.5 text-[10px] font-medium text-zinc-600">Title<Input className="h-8 text-xs" onChange={(event) => actions.updateBlockContent(block.id, { title: event.target.value })} value={content.title ?? ""} /></label>}
       {showBody && <label className="grid gap-1.5 text-[10px] font-medium text-zinc-600">Description<textarea className="min-h-18 w-full resize-y rounded-md border border-zinc-200 bg-white px-2.5 py-2 text-xs leading-5 outline-none placeholder:text-zinc-400 focus-visible:border-zinc-400 focus-visible:ring-2 focus-visible:ring-zinc-200" onChange={(event) => actions.updateBlockContent(block.id, { body: event.target.value })} value={content.body ?? ""} /></label>}
       {showButtonLabel && <label className="grid gap-1.5 text-[10px] font-medium text-zinc-600">Button label<Input className="h-8 text-xs" onChange={(event) => actions.updateBlockContent(block.id, { buttonLabel: event.target.value })} value={content.buttonLabel ?? ""} /></label>}
+      {showPlaceholder && <label className="grid gap-1.5 text-[10px] font-medium text-zinc-600">Placeholder<Input className="h-8 text-xs" onChange={(event) => actions.updateBlockContent(block.id, { body: event.target.value })} value={content.body ?? ""} /></label>}
       {showImageUrl && <div className="grid gap-2"><label className="grid gap-1.5 text-[10px] font-medium text-zinc-600">Image URL<Input className="h-8 text-xs" onChange={(event) => actions.updateBlockContent(block.id, { imageUrl: event.target.value })} placeholder="https://..." value={content.imageUrl ?? ""} /></label><ImageUploadField onChange={(imageUrl) => actions.updateBlockContent(block.id, { imageUrl })} /></div>}
     </div>
   );

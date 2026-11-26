@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { applyDocumentOperation, resolveStyles, validatePageTree, type PageDocument, type SiteDocument } from "./builder-document.ts";
-import { buildSection, createBlock, sectionPresets } from "./builder-presets.ts";
+import { buildSection, createBlock, createSection, sectionPresets } from "./builder-presets.ts";
 import { emptyDocument, loadEditorSave } from "./builder-storage.ts";
 
 function blankPage(): PageDocument {
@@ -34,8 +34,12 @@ test("Hero and Content + media insert ordered, addressable subtrees atomically",
 
     validatePageTree(page);
     assert.equal(content.parentId, sectionId);
+    assert.equal(content.type, "stack");
+    assert.equal(page.nodes[sectionId].styles.base.display, "grid");
+    assert.equal(page.nodes[mediaId].parentId, sectionId);
     assert.equal(page.nodes[mediaId].type, "image");
     assert.deepEqual(children.map((node) => node.metadata?.label), copyLabels);
+    assert.equal(children[0].content.body, id === "hero" ? "Interior architecture" : "Our approach");
     assert.ok(children.every((node) => node.parentId === contentId && Object.values(node.content).some(Boolean)));
   }
 });
@@ -107,7 +111,7 @@ test("v1 migration keeps saved root order, attached blocks, styles and stable ID
   const loaded = loadEditorSave(saved);
   const [migrated] = loaded.document.pages;
   const [eyebrowId, ...copyChildren] = migrated.nodes[copyId].childIds;
-  assert.equal(loaded.document.version, 2);
+  assert.equal(loaded.document.version, 3);
   assert.equal(loaded.selectedPageId, page.id);
   assert.deepEqual(migrated.rootIds, page.rootIds);
   assert.deepEqual(migrated.nodes[section.id].childIds, [copyId, mediaId, addedId]);
@@ -156,6 +160,89 @@ test("older browser saves keep edited content, deletion, visibility and empty pa
   assert.equal(page.nodes[addedId].content.title, "Nested section");
 });
 
+test("remaining presets materialize their visible copy, controls, images and repeated items", () => {
+  const cases = [
+    ["navigation", ["Our studio", "Selected work", "Journal"]],
+    ["features", ["Made for teams that care about every detail.", "Made to scale", "Built to adapt", "Easy to share"]],
+    ["collection", ["View all work →", "Residences", "Hospitality", "Workplaces", "View project"]],
+    ["gallery", []],
+    ["testimonials", ["Mia Petersen, Founder at Forma"]],
+    ["stats", ["12", "48", "06", "projects completed"]],
+    ["faq", ["What does a typical project look like?", "How long does it take?", "Where do you work?"]],
+    ["cta", ["Ready to make your next page feel like yours?", "Build a site that is unmistakably your own.", "Start a project"]],
+    ["contact", ["Contact", "Your name", "you@example.com", "How can we help?", "Send message"]],
+    ["footer", ["Studio", "Work", "Journal", "Privacy", "Terms"]],
+  ] as const;
+
+  for (const [preset, expectedCopy] of cases) {
+    const document = insertPreset(preset);
+    const [page] = document.pages;
+    const nodes = Object.values(page.nodes);
+    validatePageTree(page);
+    for (const copy of expectedCopy) {
+      assert.ok(nodes.some((node) => Object.values(node.content).includes(copy)), `${preset}: ${copy}`);
+    }
+    if (preset === "gallery" || preset === "collection") {
+      assert.equal(nodes.filter((node) => node.type === "image").length, preset === "gallery" ? 4 : 3);
+    }
+    if (preset === "contact") assert.equal(nodes.filter((node) => node.type === "input").length, 3);
+    const saved = { document, selectedPageId: page.id };
+    assert.deepEqual(loadEditorSave(JSON.parse(JSON.stringify(saved))), saved);
+  }
+});
+
+test("v2 migration preserves edited content, hidden groups, assets, child order and deterministic IDs", () => {
+  const root = { ...createSection("root", sectionPresets.find((preset) => preset.id === "collection")!), childIds: ["grid", "heading"] };
+  const grid = { ...createBlock("grid", "grid", {}), metadata: { appearance: "preset-grid" }, parentId: root.id, childIds: ["card"] };
+  const heading = { ...createBlock("heading", "heading", { title: "My collection", body: "Read more" }), parentId: root.id };
+  const card = {
+    ...createBlock("card", "card", { title: "My project", body: "", buttonLabel: "Open", href: "/project", alt: "A studio", imageUrl: "data:image/png;base64,dGVzdA==" }),
+    parentId: grid.id, visible: false, styles: { base: { color: "salmon" }, mobile: { padding: 8 } },
+  };
+  const existing = createBlock("card:media", "text", { body: "Keep this ID" });
+  const page: PageDocument = {
+    ...blankPage(), rootIds: [existing.id, root.id],
+    nodes: { root, grid, heading, card, [existing.id]: existing },
+  };
+  const saved = { document: { ...documentWith(page), version: 2 }, selectedPageId: page.id };
+  const before = JSON.stringify(saved);
+  const loaded = loadEditorSave(saved);
+  const [migrated] = loaded.document.pages;
+  const { nodes } = migrated;
+  assert.deepEqual(migrated.rootIds, page.rootIds);
+  assert.deepEqual(nodes.root.childIds, ["grid", "heading", "root:heading-action"]);
+  assert.deepEqual(nodes.grid.childIds, ["card"]);
+  assert.equal(nodes.card.parentId, "grid");
+  assert.equal(nodes.card.visible, false);
+  assert.deepEqual(nodes.card.styles, card.styles);
+  assert.deepEqual(nodes.card.childIds, ["card:media-2", "card:title", "card:body", "card:action"]);
+  assert.deepEqual(nodes["card:media-2"].content, { imageUrl: card.content.imageUrl, alt: "A studio" });
+  assert.deepEqual(nodes["card:title"].content, { title: "My project" });
+  assert.deepEqual(nodes["card:body"].content, { body: "" });
+  assert.deepEqual(nodes["card:action"].content, { buttonLabel: "Open", href: "/project" });
+  assert.deepEqual(nodes[existing.id], existing);
+  assert.equal(nodes["root:heading-action"].content.buttonLabel, "Read more");
+  assert.equal(JSON.stringify(saved), before);
+  assert.deepEqual(loadEditorSave(JSON.parse(before)), loaded);
+  assert.deepEqual(loadEditorSave(JSON.parse(JSON.stringify(loaded))), loaded);
+});
+
+test("v2 migration keeps deleted or repositioned Content + media nodes as saved", () => {
+  const document = insertPreset("content-media");
+  const [page] = document.pages;
+  const [content, media] = page.nodes[page.rootIds[0]].childIds;
+  const [eyebrow, heading] = page.nodes[content].childIds;
+  const edited = applyDocumentOperation(document, {
+    type: "node.delete", pageId: page.id, nodeId: eyebrow,
+  });
+  const moved = applyDocumentOperation(edited, {
+    type: "node.move", pageId: page.id, nodeId: heading, parentId: null, index: 0,
+  });
+  const saved = { document: { ...moved, version: 2 }, selectedPageId: page.id };
+  assert.deepEqual(loadEditorSave(saved).document, moved);
+  assert.deepEqual(moved.pages[0].nodes[page.rootIds[0]].childIds, [content, media]);
+});
+
 test("rejects corrupt saves explicitly without mutating the supplied data", () => {
   const pages = [
     { ...blankPage(), rootIds: ["missing"] },
@@ -172,5 +259,5 @@ test("rejects corrupt saves explicitly without mutating the supplied data", () =
     assert.throws(() => loadEditorSave(saved));
     assert.equal(JSON.stringify(saved), before);
   }
-  assert.throws(() => loadEditorSave({ document: { ...emptyDocument, version: 3 } }), /Unsupported/);
+  assert.throws(() => loadEditorSave({ document: { ...emptyDocument, version: 4 } }), /Unsupported/);
 });

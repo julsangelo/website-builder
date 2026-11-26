@@ -13,6 +13,7 @@ import {
   createPresetChild,
   createSection,
   legacyPresetContent,
+  materializePresetElements,
   nestPresetContent,
   sectionPresets,
 } from "./builder-presets.ts";
@@ -24,7 +25,7 @@ export const emptyDocument: SiteDocument = {
   name: "Forma Studio",
   pages: [],
   updatedAt: "",
-  version: 2,
+  version: 3,
 };
 
 type SavedEditor = { document: SiteDocument; selectedPageId: string | null };
@@ -142,7 +143,13 @@ function readLegacyPages(value: Record<string, unknown>): PageDocument[] {
   });
 }
 
-function migratePage(page: PageDocument): PageDocument {
+function uniqueNodeId(nodes: Record<string, EditorNode>, base: string) {
+  let candidate = base;
+  for (let suffix = 2; Object.hasOwn(nodes, candidate); suffix++) candidate = `${base}-${suffix}`;
+  return candidate;
+}
+
+function migrateVersion1(page: PageDocument): PageDocument {
   const nodes = Object.fromEntries(Object.entries(page.nodes).map(([id, saved]) => {
     // The old section drop accepted the Section block as a child. Keep it as a container.
     const node = saved.type === "section" && saved.parentId !== null
@@ -179,15 +186,21 @@ function migratePage(page: PageDocument): PageDocument {
       const edits = Object.fromEntries(Object.entries(child.content).filter(([key, value]) => legacy[key as keyof NodeContent] !== value));
       child.content = { ...template.content, ...edits };
     }
-    const createId = (role: string) => {
-      const base = `${id}:${role}`;
-      let candidate = base;
-      for (let suffix = 2; Object.hasOwn(nodes, candidate); suffix++) candidate = `${base}-${suffix}`;
-      return candidate;
-    };
-    nestPresetContent(node, nodes, createId, true);
+    nestPresetContent(node, nodes, (role) => uniqueNodeId(nodes, `${id}:${role}`), true);
   }
   return migrated;
+}
+
+function migrateVersion2(page: PageDocument): PageDocument {
+  validatePageTree(page);
+  const nodes = Object.fromEntries(Object.entries(page.nodes).map(([id, node]) => [id, { ...node, childIds: [...node.childIds] }]));
+  for (const id of page.rootIds) {
+    const section = nodes[id];
+    if (section.type === "section" && sectionPresets.some((preset) => preset.id === section.metadata?.preset)) {
+      materializePresetElements(section, nodes, (base) => uniqueNodeId(nodes, base));
+    }
+  }
+  return { ...page, nodes };
 }
 
 export function loadEditorSave(value: unknown): SavedEditor {
@@ -195,17 +208,17 @@ export function loadEditorSave(value: unknown): SavedEditor {
   let document = emptyDocument;
   if ("document" in value) {
     const saved = value.document;
-    if (!isRecord(saved) || (saved.version !== 1 && saved.version !== 2)
+    if (!isRecord(saved) || (saved.version !== 1 && saved.version !== 2 && saved.version !== 3)
       || !isId(saved.id) || !isString(saved.name) || !isString(saved.updatedAt)) {
       throw new Error("Unsupported editor document");
     }
     const pages = readPages(saved.pages);
     document = {
-      id: saved.id, name: saved.name, updatedAt: saved.updatedAt, version: 2,
-      pages: saved.version === 1 ? pages.map(migratePage) : pages,
+      id: saved.id, name: saved.name, updatedAt: saved.updatedAt, version: 3,
+      pages: saved.version === 3 ? pages : pages.map((page) => migrateVersion2(saved.version === 1 ? migrateVersion1(page) : page)),
     };
   } else {
-    document = { ...emptyDocument, pages: readLegacyPages(value).map(migratePage) };
+    document = { ...emptyDocument, pages: readLegacyPages(value).map((page) => migrateVersion2(migrateVersion1(page))) };
   }
 
   const ids = new Set<string>();

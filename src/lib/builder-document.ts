@@ -4,7 +4,7 @@ export type Breakpoint = "base" | "tablet" | "mobile";
 
 export const blockTypes = [
   "section", "box", "stack", "grid", "heading", "text", "image", "button",
-  "divider", "card", "quote", "stat", "accordion", "form", "navigation", "footer",
+  "divider", "card", "quote", "stat", "accordion", "form", "navigation", "footer", "input",
 ] as const;
 
 export type BlockType = typeof blockTypes[number];
@@ -51,7 +51,7 @@ export type SiteDocument = {
   name: string;
   pages: PageDocument[];
   updatedAt: string;
-  version: 2;
+  version: 3;
 };
 
 export function isContainer(type: BlockType) {

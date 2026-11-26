@@ -56,6 +56,8 @@ export function defaultBlockContent(kind: BlockType): NodeContent {
       return {};
     case "accordion":
       return { body: "We begin with a clear brief, then build the system and details together.", title: "What does a typical project look like?" };
+    case "input":
+      return { body: "Enter a value" };
   }
 }
 
@@ -253,5 +255,146 @@ export function buildSection(preset: SectionPreset, createId: () => string) {
     descendants[child.id] = child;
   }
   nestPresetContent(node, descendants, createId);
+  materializePresetElements(node, descendants, createId);
   return { node, descendants };
+}
+
+/** Expands the composite blocks and implicit copy used by version 2 presets. */
+export function materializePresetElements(
+  section: EditorNode,
+  nodes: Record<string, EditorNode>,
+  createId: (role: string) => string,
+) {
+  const preset = section.metadata?.preset;
+
+  function add(parent: EditorNode, role: string, type: BlockType, label: string, content: NodeContent, appearance: string = type) {
+    const node = createBlock(createId(`${parent.id}:${role}`), type, content);
+    node.parentId = parent.id;
+    node.metadata = { label, appearance: `preset-${appearance}` };
+    nodes[node.id] = node;
+    parent.childIds.push(node.id);
+    return node;
+  }
+
+  function group(node: EditorNode, appearance: string, label = node.metadata?.label) {
+    node.type = "box";
+    node.metadata = { ...node.metadata, ...(label !== undefined && { label }), appearance: `preset-${appearance}` };
+  }
+
+  function links(node: EditorNode, sample: string) {
+    const { body, title, ...remaining } = node.content;
+    const children = node.childIds;
+    node.content = remaining;
+    node.childIds = [];
+    group(node, "links");
+    if (title !== undefined) add(node, "title", "heading", "Links heading", { title });
+    if (body !== undefined) {
+      const labels = body === sample ? sample.split(" · ") : [body];
+      labels.forEach((label, index) => add(node, `link-${index + 1}`, "text", labels.length === 1 ? "Link text" : label, { body: label }));
+    }
+    node.childIds.push(...children);
+  }
+
+  function copy(node: EditorNode, titleLabel: string, bodyLabel: string) {
+    const { title, body, ...remaining } = node.content;
+    node.content = remaining;
+    if (title !== undefined) add(node, "title", "heading", titleLabel, { title });
+    if (body !== undefined) add(node, "body", "text", bodyLabel, { body });
+  }
+
+  function action(node: EditorNode, label: string) {
+    const { buttonLabel, href, ...remaining } = node.content;
+    node.content = remaining;
+    if (buttonLabel !== undefined || href !== undefined) add(node, "action", "button", label, { buttonLabel: buttonLabel ?? "", ...(href !== undefined && { href }) });
+  }
+
+  function question(parent: EditorNode, role: string, title: string, body: string, open = false) {
+    const item = add(parent, role, "box", "Question", {}, "question");
+    item.metadata = { ...item.metadata, open };
+    const trigger = add(item, "question", "text", "Question text", { body: title });
+    trigger.metadata = { ...trigger.metadata, disclosureTrigger: true };
+    add(item, "answer", "text", "Answer", { body });
+  }
+
+  function expandCard(node: EditorNode, index: number) {
+    group(node, "card", node.metadata?.label ?? (preset === "features" ? "Feature card" : "Project card"));
+    if (preset === "features") {
+      add(node, "number", "text", "Feature number", { body: String(index + 1).padStart(2, "0") });
+    } else {
+      const { imageUrl, imageAssetId, alt, ...remaining } = node.content;
+      node.content = remaining;
+      add(node, "media", "image", "Media", {
+        imageUrl: imageUrl ?? "", ...(imageAssetId !== undefined && { imageAssetId }), ...(alt !== undefined && { alt }),
+      });
+    }
+    copy(node, "Heading", "Description");
+    action(node, "CTA button");
+  }
+
+  const children = section.childIds.map((id) => nodes[id]);
+  for (const node of children) {
+    const { appearance, label } = node.metadata ?? {};
+
+    if (appearance === "split-content") {
+      if (node.content.title !== undefined || node.content.body !== undefined) {
+        const children = node.childIds;
+        node.childIds = [];
+        copy(node, "Title", "Supporting text");
+        node.childIds.push(...children);
+      }
+    } else if ((preset === "features" || preset === "collection") && node.type === "heading" && node.content.body !== undefined) {
+      const { body, ...remaining } = node.content;
+      node.content = remaining;
+      const isCollection = preset === "collection";
+      const extra = isCollection
+        ? add(section, "heading-action", "button", "View all work", { buttonLabel: body })
+        : add(section, "heading-description", "text", "Description", { body });
+      extra.visible = node.visible;
+      section.childIds.pop();
+      section.childIds.splice(section.childIds.indexOf(node.id) + 1, 0, extra.id);
+    } else if (appearance === "preset-grid") {
+      node.childIds.map((id) => nodes[id]).forEach((item, index) => {
+        if ((preset === "features" || preset === "collection") && item.type === "card") expandCard(item, index);
+        if (preset === "stats" && item.type === "stat") {
+          group(item, "stat", "Stat");
+          copy(item, "Value", "Caption");
+        }
+      });
+    } else if (preset === "navigation" && node.type === "stack" && label === "Links") {
+      links(node, "Our studio · Selected work · Journal");
+    } else if (preset === "testimonials" && node.type === "quote" && label === "Quote") {
+      group(node, "quote");
+      const { body, title, ...remaining } = node.content;
+      node.content = remaining;
+      if (body !== undefined) add(node, "quote", "text", "Quote text", { body });
+      if (title !== undefined) add(node, "attribution", "text", "Attribution", { body: title });
+    } else if (preset === "faq" && node.type === "accordion" && label === "Questions") {
+      const { title, body, ...remaining } = node.content;
+      node.content = remaining;
+      group(node, "questions");
+      question(node, "first", title ?? "", body ?? "", true);
+      question(node, "duration", "How long does it take?", "Timelines are shaped around your team, scope, and launch goals.");
+      question(node, "location", "Where do you work?", "Copenhagen · Worldwide");
+    } else if (preset === "contact" && node.type === "form" && label === "Contact form") {
+      group(node, "form");
+      copy(node, "Form title", "Form description");
+      add(node, "name", "input", "Name field", { body: "Your name" });
+      add(node, "email", "input", "Email field", { body: "you@example.com" });
+      add(node, "message", "input", "Message field", { body: "How can we help?" });
+      action(node, "Submit button");
+    } else if (preset === "footer" && node.type === "footer" && label === "Footer navigation") {
+      group(node, "footer-navigation");
+      copy(node, "Logo", "Footer text");
+      const nav = add(node, "links", "box", "Links", {}, "links");
+      for (const link of ["Studio", "Work", "Journal"]) add(nav, link.toLowerCase(), "text", link, { body: link });
+    } else if (preset === "footer" && node.type === "text" && label === "Legal links" && node.content.body === "© 2026 Forma Studio · Privacy · Terms") {
+      links(node, node.content.body);
+    }
+  }
+
+  if (preset === "contact") {
+    const eyebrow = add(section, "eyebrow", "text", "Eyebrow", { body: "Contact" });
+    section.childIds.pop();
+    section.childIds.unshift(eyebrow.id);
+  }
 }
