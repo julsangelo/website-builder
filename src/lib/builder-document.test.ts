@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyDocumentOperation, resolveStyles, validatePageTree, type PageDocument, type SiteDocument } from "./builder-document.ts";
+import { applyDocumentOperation, proposeNodeMove, resolveStyles, selectionAfterDelete, validatePageTree, type PageDocument, type SiteDocument } from "./builder-document.ts";
 import { buildSection, createBlock, createSection, sectionPresets } from "./builder-presets.ts";
 import { emptyDocument, loadEditorSave } from "./builder-storage.ts";
 
@@ -74,6 +74,54 @@ test("Moves update both parents and reject cycles and leaf destinations", () => 
   }), /page root/);
 });
 
+test("Layer move proposals resolve before and after against the order after removing the source", () => {
+  const document = insertPreset("hero");
+  const [page] = document.pages;
+  const [sectionId] = page.rootIds;
+  const [contentId] = page.nodes[sectionId].childIds;
+  const [eyebrow, heading, description, button] = page.nodes[contentId].childIds;
+  const after = proposeNodeMove(page, eyebrow, description, "after");
+  const before = proposeNodeMove(page, button, heading, "before");
+  assert.ok(after.operation && before.operation);
+  assert.deepEqual(applyDocumentOperation(document, after.operation).pages[0].nodes[contentId].childIds, [heading, description, eyebrow, button]);
+  assert.deepEqual(applyDocumentOperation(document, before.operation).pages[0].nodes[contentId].childIds, [eyebrow, button, heading, description]);
+  assert.equal(proposeNodeMove(page, eyebrow, heading, "before").operation, null);
+  assert.equal(proposeNodeMove(page, heading, eyebrow, "after").operation, null);
+  assert.equal(applyDocumentOperation(document, { ...after.operation, index: 0 }), document);
+});
+
+test("Layer move proposals support root and nested destinations and reject invalid parents", () => {
+  const document = insertPreset("hero");
+  const [page] = document.pages;
+  const [sectionId] = page.rootIds;
+  const [contentId, mediaId] = page.nodes[sectionId].childIds;
+  const [eyebrow, heading] = page.nodes[contentId].childIds;
+  const before = proposeNodeMove(page, mediaId, heading, "before");
+  const inside = proposeNodeMove(page, mediaId, contentId, "inside");
+  const root = proposeNodeMove(page, heading, sectionId, "after");
+  assert.ok(before.operation && inside.operation && root.operation);
+  const [beforePage] = applyDocumentOperation(document, before.operation).pages;
+  assert.deepEqual(beforePage.nodes[contentId].childIds.slice(0, 3), [eyebrow, mediaId, heading]);
+  const [insidePage] = applyDocumentOperation(document, inside.operation).pages;
+  assert.equal(insidePage.nodes[contentId].childIds.at(-1), mediaId);
+  assert.equal(insidePage.nodes[mediaId].parentId, contentId);
+  const [rootPage] = applyDocumentOperation(document, root.operation).pages;
+  assert.deepEqual(rootPage.rootIds, [sectionId, heading]);
+  for (const candidate of [beforePage, insidePage, rootPage]) validatePageTree(candidate);
+
+  const snapshot = JSON.stringify(document);
+  const cycle = proposeNodeMove(page, contentId, heading, "before");
+  const leaf = proposeNodeMove(page, mediaId, heading, "inside");
+  const nestedSection = proposeNodeMove(page, sectionId, mediaId, "before");
+  assert.equal(cycle.operation, null);
+  assert.match(cycle.reason, /descendant/);
+  assert.equal(leaf.operation, null);
+  assert.match(leaf.reason, /container/);
+  assert.equal(nestedSection.operation, null);
+  assert.match(nestedSection.reason, /page root/);
+  assert.equal(JSON.stringify(document), snapshot);
+});
+
 test("Hiding a container and reloading preserves each descendant's own visibility", () => {
   const document = insertPreset("content-media");
   const [page] = document.pages;
@@ -104,9 +152,13 @@ test("Deleting a container removes its subtree in a single immutable operation",
   const [page] = document.pages;
   const [rootId] = page.rootIds;
   const [contentId, mediaId] = page.nodes[rootId].childIds;
+  assert.equal(selectionAfterDelete(page, page.nodes[contentId]), mediaId);
+  assert.equal(selectionAfterDelete(page, page.nodes[mediaId]), contentId);
+  assert.equal(selectionAfterDelete(page, page.nodes[rootId]), null);
   const next = applyDocumentOperation(document, { type: "node.delete", pageId: page.id, nodeId: contentId });
   validatePageTree(next.pages[0]);
   assert.deepEqual(Object.keys(next.pages[0].nodes).sort(), [rootId, mediaId].sort());
+  assert.equal(selectionAfterDelete(next.pages[0], next.pages[0].nodes[mediaId]), rootId);
   assert.equal(page.nodes[contentId].childIds.length, 3);
 });
 

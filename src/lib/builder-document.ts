@@ -74,6 +74,9 @@ export type DocumentOperation =
   | { type: "node.setVisibility"; pageId: string; nodeId: string; visible: boolean }
   | { type: "node.delete"; pageId: string; nodeId: string };
 
+type MoveOperation = Extract<DocumentOperation, { type: "node.move" }>;
+export type MovePlacement = "before" | "after" | "inside";
+
 export function validatePageTree(page: PageDocument) {
   const visited = new Set<string>();
   const pending = page.rootIds.map((id) => ({ id, parentId: null as string | null }));
@@ -94,11 +97,56 @@ export function validatePageTree(page: PageDocument) {
 }
 
 function validatePlacement(page: PageDocument, parentId: string | null, type: BlockType) {
-  if (parentId === null) return;
-  if (type === "section") throw new Error("Sections belong at the page root");
+  const error = placementError(page, parentId, type);
+  if (error) throw new Error(error);
+}
+
+function placementError(page: PageDocument, parentId: string | null, type: BlockType) {
+  if (parentId === null) return null;
+  if (type === "section") return "Sections belong at the page root";
   if (!Object.hasOwn(page.nodes, parentId) || !isContainer(page.nodes[parentId].type)) {
-    throw new Error(`Parent ${parentId} is not a container`);
+    return "The destination is not a container";
   }
+  return null;
+}
+
+function moveError(page: PageDocument, node: EditorNode, parentId: string | null) {
+  const error = placementError(page, parentId, node.type);
+  if (error) return error;
+  for (let id = parentId; id !== null; id = page.nodes[id].parentId) {
+    if (id === node.id) return "A node cannot be moved into itself or its descendant";
+  }
+  return null;
+}
+
+function siblingsAt(page: PageDocument, parentId: string | null) {
+  return parentId === null ? page.rootIds : page.nodes[parentId].childIds;
+}
+
+export function proposeNodeMove(page: PageDocument, nodeId: string, targetId: string, placement: MovePlacement):
+  { operation: MoveOperation; reason: null } | { operation: null; reason: string } {
+  if (!Object.hasOwn(page.nodes, nodeId) || !Object.hasOwn(page.nodes, targetId)) {
+    return { operation: null, reason: "The layer is no longer available" };
+  }
+  const node = page.nodes[nodeId];
+  const target = page.nodes[targetId];
+  const parentId = placement === "inside" ? target.id : target.parentId;
+  const error = moveError(page, node, parentId);
+  if (error) return { operation: null, reason: error };
+
+  // Move indices are relative to the destination after removing the source.
+  const siblings = siblingsAt(page, parentId);
+  const sourceIndex = siblings.indexOf(nodeId);
+  const boundary = placement === "inside" ? siblings.length : siblings.indexOf(targetId) + Number(placement === "after");
+  const index = sourceIndex !== -1 && sourceIndex < boundary ? boundary - 1 : boundary;
+  if (sourceIndex === index) return { operation: null, reason: "The layer is already in this position" };
+  return { operation: { type: "node.move", pageId: page.id, nodeId, parentId, index }, reason: null };
+}
+
+export function selectionAfterDelete(page: PageDocument, node: EditorNode) {
+  const siblings = siblingsAt(page, node.parentId);
+  const index = siblings.indexOf(node.id);
+  return siblings[index + 1] ?? siblings[index - 1] ?? node.parentId;
 }
 
 function pageFor(document: SiteDocument, pageId: string) {
@@ -145,16 +193,18 @@ export function applyDocumentOperation(document: SiteDocument, operation: Docume
     case "node.move": {
       const node = page.nodes[operation.nodeId];
       if (!Object.hasOwn(page.nodes, operation.nodeId)) throw new Error(`Node ${operation.nodeId} was not found`);
-      validatePlacement(page, operation.parentId, node.type);
-      for (let parentId = operation.parentId; parentId !== null; parentId = page.nodes[parentId].parentId) {
-        if (parentId === node.id) throw new Error("A node cannot be moved into its own descendant");
-      }
+      const error = moveError(page, node, operation.parentId);
+      if (error) throw new Error(error);
+      const siblings = siblingsAt(page, operation.parentId);
+      const sameParent = node.parentId === operation.parentId;
+      const index = Math.max(0, Math.min(operation.index, siblings.length - Number(sameParent)));
+      if (sameParent && siblings[index] === node.id) return document;
       const nodes = { ...page.nodes };
       const rootIds = [...page.rootIds];
       if (node.parentId !== null) nodes[node.parentId] = { ...nodes[node.parentId], childIds: nodes[node.parentId].childIds.filter((id) => id !== node.id) };
       else rootIds.splice(rootIds.indexOf(node.id), 1);
-      if (operation.parentId !== null) nodes[operation.parentId] = { ...nodes[operation.parentId], childIds: insertAt(nodes[operation.parentId].childIds, operation.index, node.id) };
-      else rootIds.splice(Math.max(0, Math.min(operation.index, rootIds.length)), 0, node.id);
+      if (operation.parentId !== null) nodes[operation.parentId] = { ...nodes[operation.parentId], childIds: insertAt(nodes[operation.parentId].childIds, index, node.id) };
+      else rootIds.splice(index, 0, node.id);
       nodes[node.id] = { ...node, parentId: operation.parentId };
       return updatePage(document, page.id, (current) => ({ ...current, nodes, rootIds }));
     }

@@ -41,6 +41,7 @@ import {
   MoreHorizontal,
   MousePointer2,
   PanelTop,
+  Move,
   Pencil,
   Play,
   Plus,
@@ -100,17 +101,21 @@ import { Dialog } from "@base-ui/react/dialog";
 import {
   applyDocumentOperation,
   isContainer,
+  proposeNodeMove,
   resolveStyles,
+  selectionAfterDelete,
   type BlockType,
   type Breakpoint,
   type DocumentOperation,
   type EditorNode,
+  type MovePlacement,
   type NodeContent,
   type PageDocument,
   type SiteDocument,
 } from "@/lib/builder-document";
 import { buildSection, createBlock, sectionPresets, type SectionPreset } from "@/lib/builder-presets";
 import { editorStorageKey, emptyDocument, isBlockType, loadEditorSave, pageSlug } from "@/lib/builder-storage";
+import { useLayerDrag } from "./layer-drag";
 
 // PROTOTYPE: Three Figma-derived website editor shells, switchable via ?variant=a|b|c.
 
@@ -173,7 +178,7 @@ type PageDialogState =
   | { mode: "delete"; pageId: string }
   | null;
 
-type LayerDeleteDialogState = { hasChildren: boolean; label: string; layerId: string } | null;
+type LayerDeleteDialogState = { hasChildren: boolean; label: string; layerId: string; pageId: string } | null;
 
 const pagePresets: PagePreset[] = [
   {
@@ -278,6 +283,8 @@ type EditorActions = {
   addBlock: (block: BlockType, parentId?: string | null) => void;
   addSection: (section: SectionPreset) => void;
   isLayerCollapsed: (layerId: string) => boolean;
+  expandLayer: (layerId: string) => void;
+  moveLayer: (sourceId: string, targetId: string, placement: MovePlacement) => void;
   moveBeforeSibling: (sourceId: string, targetId: string) => void;
   requestLayerDelete: (node: EditorNode) => void;
   toggleLayerCollapse: (layerId: string) => void;
@@ -630,6 +637,80 @@ function LayerDeleteDialog({
   );
 }
 
+const movePlacements = ["before", "after", "inside"] as const;
+const placementLabels = { before: "Before", after: "After", inside: "Inside, at the end" };
+
+function LayerMoveDialog({ page, nodeId, open, onClose, onMove, restoreFocus }: {
+  page: PageDocument;
+  nodeId: string;
+  open: boolean;
+  onClose: () => void;
+  onMove: EditorActions["moveLayer"];
+  restoreFocus: () => HTMLElement | null;
+}) {
+  const [targetId, setTargetId] = useState("");
+  const [placement, setPlacement] = useState<MovePlacement>("before");
+  const targets = new Map<string, { path: string; placements: MovePlacement[] }>();
+  function collect(ids: string[], ancestors: string[] = []) {
+    ids.forEach((id, index) => {
+      const node = page.nodes[id];
+      const path = [...ancestors, `${nodeDetails(node).label} (${index + 1})`];
+      const placements = movePlacements.filter((placement) => proposeNodeMove(page, nodeId, id, placement).operation);
+      if (placements.length) targets.set(id, { path: path.join(" / "), placements });
+      collect(node.childIds, path);
+    });
+  }
+  if (open) collect(page.rootIds);
+  const target = targets.get(targetId);
+  const selectedPlacement = target?.placements.includes(placement) ? placement : target?.placements[0];
+
+  function close() {
+    setTargetId("");
+    setPlacement("before");
+    onClose();
+  }
+
+  return (
+    <Dialog.Root onOpenChange={(open) => !open && close()} open={open}>
+      <Dialog.Portal>
+        <Dialog.Backdrop className="fixed inset-0 z-[80] bg-zinc-950/25 backdrop-blur-[1px]" />
+        <Dialog.Viewport className="fixed inset-0 z-[81] grid place-items-center p-4">
+          <Dialog.Popup finalFocus={restoreFocus} className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-5 shadow-2xl outline-none">
+            <Dialog.Title className="text-base font-semibold text-zinc-950">Move {nodeDetails(page.nodes[nodeId]).label}</Dialog.Title>
+            {targets.size > 0 ? (
+              <div className="mt-4 grid gap-3 text-sm">
+                <label className="grid gap-1">
+                  Destination layer
+                  <select className="w-full rounded-md border border-zinc-200 bg-white p-2" value={targetId} onChange={(event) => setTargetId(event.currentTarget.value)}>
+                    <option value="" disabled>Choose a layer</option>
+                    {Array.from(targets, ([id, { path }]) => <option key={id} value={id}>{path}</option>)}
+                  </select>
+                </label>
+                <label className="grid gap-1">
+                  Position
+                  <select className="w-full rounded-md border border-zinc-200 bg-white p-2" disabled={!target} value={selectedPlacement ?? ""} onChange={(event) => setPlacement(event.currentTarget.value as MovePlacement)}>
+                    {!target && <option value="">Choose a destination first</option>}
+                    {target?.placements.map((value) => <option key={value} value={value}>{placementLabels[value]}</option>)}
+                  </select>
+                </label>
+              </div>
+            ) : (
+              <Dialog.Description className="mt-2 text-sm text-zinc-500">There are no available destinations for this layer.</Dialog.Description>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <Button onClick={close} type="button" variant="outline">Cancel</Button>
+              <Button disabled={!selectedPlacement} onClick={() => {
+                if (selectedPlacement) onMove(nodeId, targetId, selectedPlacement);
+                close();
+              }} type="button">Move layer</Button>
+            </div>
+          </Dialog.Popup>
+        </Dialog.Viewport>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
 function LayerTreeItem({
   collapsed = false,
   collapsible = false,
@@ -638,13 +719,13 @@ function LayerTreeItem({
   label,
   nodeId,
   onDelete,
-  onDragOver,
   onDragStart,
-  onDrop,
+  onMove,
   onSelect,
   onToggleCollapse,
   onToggleVisibility,
   selection,
+  drop,
   visible,
 }: {
   collapsed?: boolean;
@@ -654,13 +735,13 @@ function LayerTreeItem({
   label: string;
   nodeId: string;
   onDelete: () => void;
-  onDragOver?: (event: DragEvent<HTMLDivElement>) => void;
-  onDragStart?: (event: DragEvent<HTMLDivElement>) => void;
-  onDrop?: (event: DragEvent<HTMLDivElement>) => void;
+  onDragStart: (event: DragEvent<HTMLDivElement>) => void;
+  onMove: () => void;
   onSelect: () => void;
   onToggleCollapse?: () => void;
   onToggleVisibility: () => void;
   selection: LayerSelection | null;
+  drop: ReturnType<typeof useLayerDrag>["drop"];
   visible: boolean;
 }) {
   const active = selection !== null;
@@ -673,14 +754,13 @@ function LayerTreeItem({
   return (
     <div
       className={
-        "group flex h-8 items-center rounded-md transition " +
-        (active ? "bg-orange-100 text-orange-600 hover:text-zinc-950" : "text-zinc-700 hover:bg-zinc-100")
+        "group relative flex h-8 items-center rounded-md transition " +
+        (active ? "bg-orange-100 text-orange-600 hover:text-zinc-950 " : "text-zinc-700 hover:bg-zinc-100 ") +
+        (drop?.reason ? "ring-2 ring-inset ring-red-500" : drop?.placement === "inside" ? "bg-orange-50 ring-2 ring-inset ring-orange-500" : "")
       }
-      draggable={Boolean(onDragStart)}
+      draggable
       data-layer-node-id={nodeId}
-      onDragOver={onDragOver}
       onDragStart={onDragStart}
-      onDrop={onDrop}
       ref={rowRef}
       style={{ paddingLeft: 8 }}
     >
@@ -714,6 +794,17 @@ function LayerTreeItem({
       </Button>
       <div className="mr-1 flex shrink-0 items-center gap-0.5">
         <Button
+          aria-label={`Move ${label}`}
+          className="size-5 bg-transparent text-zinc-500 hover:bg-zinc-200 hover:text-zinc-950"
+          data-layer-move=""
+          onClick={onMove}
+          size="icon-xs"
+          type="button"
+          variant="ghost"
+        >
+          <Move className="size-3" />
+        </Button>
+        <Button
           aria-label={`${visible ? "Hide" : "Show"} ${label}`}
           className={"size-5 bg-transparent " + (active ? "text-orange-600 group-hover:text-zinc-950 hover:bg-orange-200 hover:text-zinc-950" : "text-zinc-500 hover:bg-zinc-200 hover:text-zinc-950")}
           onClick={(event) => {
@@ -744,7 +835,13 @@ function LayerTreeItem({
   );
 }
 
-function Layers({ actions, ids, inheritedHidden = false }: { actions: EditorActions; ids: string[]; inheritedHidden?: boolean }) {
+function Layers({ actions, drag, ids, inheritedHidden = false, onMove }: {
+  actions: EditorActions;
+  drag: ReturnType<typeof useLayerDrag>;
+  ids: string[];
+  inheritedHidden?: boolean;
+  onMove: (nodeId: string) => void;
+}) {
   if (!actions.page) return null;
   const { nodes } = actions.page;
   return (
@@ -753,32 +850,122 @@ function Layers({ actions, ids, inheritedHidden = false }: { actions: EditorActi
         const node = nodes[id];
         const { label, icon } = nodeDetails(node);
         const collapsed = actions.isLayerCollapsed(id);
+        const drop = drag.drop?.targetId === id ? drag.drop : null;
         return (
-          <div key={id}>
+          <div className="relative" key={id}>
+            {drop && !drop.reason && drop.placement !== "inside" && (
+              <div aria-hidden className={`pointer-events-none absolute inset-x-0 z-10 h-0.5 rounded-full bg-orange-500 ${drop.placement === "before" ? "-top-px" : "-bottom-px"}`} />
+            )}
             <LayerTreeItem
               collapsed={collapsed}
               collapsible={node.childIds.length > 0}
+              drop={drop}
               icon={icon}
               inheritedHidden={inheritedHidden}
               label={label}
               nodeId={id}
               onDelete={() => actions.requestLayerDelete(node)}
+              onDragStart={(event) => drag.startDrag(event, id)}
+              onMove={() => onMove(id)}
               onSelect={() => actions.choose(node, "layers")}
               onToggleCollapse={() => actions.toggleLayerCollapse(id)}
               onToggleVisibility={() => actions.toggleLayerVisibility(node)}
               selection={actions.selection?.id === id ? actions.selection : null}
               visible={node.visible}
-              {...siblingDragProps(actions, node)}
             />
             {!collapsed && node.childIds.length > 0 && (
               <div className="ml-5 border-l border-zinc-200 pl-1.5">
-                <Layers actions={actions} ids={node.childIds} inheritedHidden={inheritedHidden || !node.visible} />
+                <Layers actions={actions} drag={drag} ids={node.childIds} inheritedHidden={inheritedHidden || !node.visible} onMove={onMove} />
               </div>
             )}
           </div>
         );
       })}
     </div>
+  );
+}
+
+function LayersPanel({ actions }: { actions: EditorActions }) {
+  const [scrolled, setScrolled] = useState(false);
+  const [moveDialog, setMoveDialog] = useState<{ nodeId: string; open: boolean } | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const page = actions.page;
+  const drag = useLayerDrag(page, actions.expandLayer, actions.moveLayer);
+
+  return (
+    <ScrollArea
+      className="h-full"
+      viewportRef={viewportRef}
+      viewportProps={{
+        ...drag.viewportProps,
+        onScroll: (event) => setScrolled(event.currentTarget.scrollTop > 0),
+        style: { scrollPaddingTop: "2.5rem" },
+      }}
+    >
+      <section className="min-h-full">
+        <div
+          className={
+            "sticky top-0 z-10 flex h-10 items-center gap-2 border-b border-zinc-100 bg-white px-4 text-xs font-semibold transition-shadow " +
+            (scrolled ? "shadow-[0_4px_8px_rgba(24,24,27,0.12)]" : "shadow-none")
+          }
+        >
+          <span>Layers</span>
+          <span role="status" className="ml-auto min-w-0 truncate text-right text-[10px] font-normal text-red-700" title={drag.drop?.reason ?? undefined}>
+            {drag.drop?.reason}
+          </span>
+          <ListFilter className="size-3 shrink-0 text-zinc-500" />
+        </div>
+        <div className="space-y-0.5 p-3 pt-2">
+          {page?.rootIds.length ? (
+            <Layers actions={actions} drag={drag} ids={page.rootIds} onMove={(nodeId) => setMoveDialog({ nodeId, open: true })} />
+          ) : (
+            <Empty className="min-h-32 gap-2 border-0 bg-zinc-50/70 p-3">
+              <EmptyHeader className="gap-1">
+                <EmptyTitle className="text-xs">{page ? "No layers yet" : "No page selected"}</EmptyTitle>
+                <EmptyDescription className="text-[10px]">
+                  {page ? "Use Quick insert to add blocks or sections." : "Add or select a page to view its layers."}
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          )}
+        </div>
+      </section>
+      {page && moveDialog && Object.hasOwn(page.nodes, moveDialog.nodeId) && (
+        <LayerMoveDialog
+          key={moveDialog.nodeId}
+          nodeId={moveDialog.nodeId}
+          open={moveDialog.open}
+          onClose={() => setMoveDialog({ ...moveDialog, open: false })}
+          onMove={actions.moveLayer}
+          page={page}
+          restoreFocus={() => viewportRef.current?.querySelector<HTMLElement>(`[data-layer-node-id="${CSS.escape(moveDialog.nodeId)}"] [data-layer-move]`) ?? null}
+        />
+      )}
+    </ScrollArea>
+  );
+}
+
+function CompactLayers({ actions }: { actions: EditorActions }) {
+  return (
+    <Dialog.Root>
+      <Dialog.Trigger render={<Button aria-label="Open Layers" size="icon-sm" variant="ghost" />}>
+        <ListFilter className="size-4" />
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Backdrop className="fixed inset-0 z-[70] bg-zinc-950/25" />
+        <Dialog.Viewport className="fixed inset-0 z-[71] grid place-items-center p-4">
+          <Dialog.Popup className="flex h-[min(70dvh,30rem)] w-full max-w-sm flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl outline-none">
+            <Dialog.Title className="sr-only">Layers</Dialog.Title>
+            <div className="min-h-0 flex-1">
+              <LayersPanel actions={actions} key={actions.page?.id} />
+            </div>
+            <div className="flex justify-end border-t border-zinc-100 p-2">
+              <Dialog.Close render={<Button size="sm" variant="outline" />}>Close</Dialog.Close>
+            </div>
+          </Dialog.Popup>
+        </Dialog.Viewport>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -800,7 +987,6 @@ function Navigator({
   selectedPageId: string | null;
 }) {
   const [pagesScrolled, setPagesScrolled] = useState(false);
-  const [layersScrolled, setLayersScrolled] = useState(false);
 
   return (
     <aside className="flex h-full w-full min-w-0 flex-col bg-white">
@@ -916,44 +1102,7 @@ function Navigator({
         </ResizablePanel>
         <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
         <ResizablePanel defaultSize="43" id="layers" minSize="160px">
-          <ScrollArea
-            className="h-full"
-            viewportProps={{
-              onScroll: (event) => setLayersScrolled(event.currentTarget.scrollTop > 0),
-              style: { scrollPaddingTop: "2.5rem" },
-            }}
-          >
-            <section className="min-h-full">
-              <div
-                className={
-                  "sticky top-0 z-10 flex h-10 items-center justify-between border-b border-zinc-100 bg-white px-4 text-xs font-semibold transition-shadow " +
-                  (layersScrolled ? "shadow-[0_4px_8px_rgba(24,24,27,0.12)]" : "shadow-none")
-                }
-              >
-                <span>Layers</span>
-                <ListFilter className="size-3 text-zinc-500" />
-              </div>
-              <div className="space-y-0.5 p-3 pt-2">
-                {!actions.hasPage ? (
-                <Empty className="min-h-32 gap-2 border-0 bg-zinc-50/70 p-3">
-                  <EmptyHeader className="gap-1">
-                    <EmptyTitle className="text-xs">No page selected</EmptyTitle>
-                    <EmptyDescription className="text-[10px]">Add or select a page to view its layers.</EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              ) : actions.page?.rootIds.length ? (
-                <Layers actions={actions} ids={actions.page.rootIds} />
-              ) : (
-                <Empty className="min-h-32 gap-2 border-0 bg-zinc-50/70 p-3">
-                  <EmptyHeader className="gap-1">
-                    <EmptyTitle className="text-xs">No layers yet</EmptyTitle>
-                    <EmptyDescription className="text-[10px]">Use Quick insert to add blocks or sections.</EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              )}
-              </div>
-            </section>
-          </ScrollArea>
+          <LayersPanel actions={actions} key={actions.page?.id} />
         </ResizablePanel>
         <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
         <ResizablePanel defaultSize="35" id="quick-insert" minSize="190px">
@@ -1816,7 +1965,12 @@ function Canvas({ actions, compact, onViewportChange, page, variant, viewport }:
           </Button>
         </div>
       </footer>
-      {(compact || variant === "c") && <div className="fixed right-4 bottom-14 z-20 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg"><QuickInsert actions={actions} rail /></div>}
+      {(compact || variant === "c") && (
+        <div className="fixed right-4 bottom-14 z-20 flex items-center gap-1 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg">
+          <CompactLayers actions={actions} />
+          <QuickInsert actions={actions} rail />
+        </div>
+      )}
     </main>
   );
 }
@@ -1957,11 +2111,15 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
   function choose(node: EditorNode, source?: "layers") {
     if (!page) return;
     setLayerSelection({ pageId: page.id, id: node.id, source });
-    const parentIds = new Set(ancestorNodes(page, node).slice(0, -1).map((ancestor) => ancestor.id));
+    expandLayers(page.id, ancestorNodes(page, node).slice(0, -1).map((ancestor) => ancestor.id));
+  }
+
+  function expandLayers(pageId: string, ids: string[]) {
+    const expanded = new Set(ids);
     setCollapsedLayers((current) => {
-      const collapsed = current[page.id];
-      if (!collapsed?.some((id) => parentIds.has(id))) return current;
-      return { ...current, [page.id]: collapsed.filter((id) => !parentIds.has(id)) };
+      const collapsed = current[pageId];
+      if (!collapsed?.some((id) => expanded.has(id))) return current;
+      return { ...current, [pageId]: collapsed.filter((id) => !expanded.has(id)) };
     });
   }
 
@@ -1999,18 +2157,35 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
     choose(source);
   }
 
+  function moveLayer(sourceId: string, targetId: string, placement: MovePlacement) {
+    if (!page) return;
+    const { operation } = proposeNodeMove(page, sourceId, targetId, placement);
+    if (!operation) return;
+    commit((document) => {
+      const currentPage = document.pages.find((candidate) => candidate.id === page.id);
+      if (!currentPage) return document;
+      const { operation } = proposeNodeMove(currentPage, sourceId, targetId, placement);
+      return operation ? applyDocumentOperation(document, operation) : document;
+    });
+    const parent = operation.parentId === null ? null : page.nodes[operation.parentId];
+    expandLayers(page.id, ancestorNodes(page, parent).map((ancestor) => ancestor.id));
+  }
+
   function confirmLayerDelete() {
-    if (!page || !layerDeleteDialog) return;
+    if (!page || layerDeleteDialog?.pageId !== page.id) {
+      setLayerDeleteDialog(null);
+      return;
+    }
     const node = page.nodes[layerDeleteDialog.layerId];
     if (node) {
-      if (ancestorNodes(page, selectedNode).some((ancestor) => ancestor.id === node.id)) {
-        const siblings = node.parentId === null ? page.rootIds : page.nodes[node.parentId].childIds;
-        const index = siblings.indexOf(node.id);
-        const fallback = siblings[index + 1] ?? siblings[index - 1] ?? node.parentId;
-        if (fallback === null) setLayerSelection(null);
-        else choose(page.nodes[fallback]);
-      }
-      edit({ type: "node.delete", pageId: page.id, nodeId: node.id });
+      const fallback = selectionAfterDelete(page, node);
+      if (fallback === null) setLayerSelection(null);
+      else choose(page.nodes[fallback], "layers");
+      commit((document) => {
+        const currentPage = document.pages.find((candidate) => candidate.id === page.id);
+        if (!currentPage || !Object.hasOwn(currentPage.nodes, node.id)) return document;
+        return applyDocumentOperation(document, { type: "node.delete", pageId: page.id, nodeId: node.id });
+      });
     }
     setLayerDeleteDialog(null);
   }
@@ -2137,12 +2312,15 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
   }, [changeVariant, current, showVariantSwitcher]);
 
   const actions: EditorActions = {
-    page, hasPage: page !== null, selectedNode, choose, addBlock, addSection, moveBeforeSibling, toggleLayerCollapse,
+    page, hasPage: page !== null, selectedNode, choose, addBlock, addSection, moveBeforeSibling, moveLayer, toggleLayerCollapse,
     selection: selectedNode ? layerSelection : null,
+    expandLayer: (id) => { if (page) expandLayers(page.id, [id]); },
     isLayerCollapsed: (id) => page !== null && (collapsedLayers[page.id] ?? []).includes(id),
-    requestLayerDelete: (node) => setLayerDeleteDialog({
-      layerId: node.id, label: nodeDetails(node).label, hasChildren: node.childIds.length > 0,
-    }),
+    requestLayerDelete: (node) => {
+      if (page) setLayerDeleteDialog({
+        layerId: node.id, label: nodeDetails(node).label, hasChildren: node.childIds.length > 0, pageId: page.id,
+      });
+    },
     toggleLayerVisibility: (node) => {
       if (page) edit({ type: "node.setVisibility", pageId: page.id, nodeId: node.id, visible: !node.visible });
     },
