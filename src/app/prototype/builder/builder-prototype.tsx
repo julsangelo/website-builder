@@ -105,6 +105,7 @@ import {
   insertionAtSelection,
   isContainer,
   proposeNodeMove,
+  proposeNodeMoveAt,
   resolveStyles,
   selectionAfterDelete,
   type BlockType,
@@ -120,7 +121,7 @@ import {
 import { buildSection, createBlock, sectionPresets } from "@/lib/builder-presets";
 import { editorStorageKey, emptyDocument, loadEditorSave, pageSlug } from "@/lib/builder-storage";
 import { useLayerDrag } from "./layer-drag";
-import { insertionType, startQuickInsertDrag, useQuickInsertDrop, type QuickInsertDrag, type QuickInsertItem } from "./quick-insert-drag";
+import { insertionType, startQuickInsertDrag, useCanvasDrop, type QuickInsertDrag, type QuickInsertItem } from "./canvas-drop";
 
 // PROTOTYPE: Three Figma-derived website editor shells, switchable via ?variant=a|b|c.
 
@@ -266,8 +267,6 @@ const sectionPresetIcons: Record<string, LucideIcon> = {
   footer: PanelTop,
 };
 
-const nodeDragType = "application/x-forma-node";
-
 function nodeDetails(node: EditorNode) {
   const block = quickBlocks.find((candidate) => candidate.id === node.type) ?? { label: "Input", icon: Type };
   const preset = node.metadata?.preset;
@@ -290,35 +289,12 @@ type EditorActions = {
   isLayerCollapsed: (layerId: string) => boolean;
   expandLayer: (layerId: string) => void;
   moveLayer: (sourceId: string, targetId: string, placement: MovePlacement) => void;
-  moveBeforeSibling: (sourceId: string, targetId: string) => void;
+  moveCanvasNode: (sourceId: string, target: InsertionTarget) => void;
   requestLayerDelete: (node: EditorNode) => void;
   toggleLayerCollapse: (layerId: string) => void;
   toggleLayerVisibility: (node: EditorNode) => void;
   updateBlockContent: (blockId: string, content: NodeContent) => void;
 };
-
-function siblingDragProps(actions: EditorActions, node: EditorNode) {
-  if (node.parentId === null) return {};
-  return {
-    onDragStart: (event: DragEvent<HTMLDivElement>) => {
-      event.stopPropagation();
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData(nodeDragType, node.id);
-    },
-    onDragOver: (event: DragEvent<HTMLDivElement>) => {
-      if (!event.dataTransfer.types.includes(nodeDragType)) return;
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    onDrop: (event: DragEvent<HTMLDivElement>) => {
-      const sourceId = event.dataTransfer.getData(nodeDragType);
-      if (!sourceId) return;
-      event.preventDefault();
-      event.stopPropagation();
-      actions.moveBeforeSibling(sourceId, node.id);
-    },
-  };
-}
 
 function IconButton({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -1293,36 +1269,40 @@ function CanvasToolbar({
   );
 }
 
+type PreviewMove = {
+  start: ReturnType<typeof useCanvasDrop>["startMove"];
+  openDialog: (nodeId: string) => void;
+};
+
 function PreviewSelectable({
-  actions, children, className, node, style,
+  actions, children, className, emptyContainer, move, node, style,
 }: {
   actions: EditorActions;
   children: ReactNode;
   className: string;
+  emptyContainer: boolean;
+  move: PreviewMove;
   node: EditorNode;
   style: CSSProperties;
 }) {
   const selected = actions.selectedNode?.id === node.id;
-  const drag = siblingDragProps(actions, node);
+  const { label } = nodeDetails(node);
 
   return (
     <div
-      aria-label={nodeDetails(node).label}
+      aria-label={label}
       aria-pressed={selected}
       className={
-        "cursor-pointer transition outline-none focus-visible:ring-2 focus-visible:ring-orange-500 " +
+        "cursor-pointer transition focus-visible:ring-2 focus-visible:ring-orange-500 " +
+        (emptyContainer ? "min-h-8 outline-1 -outline-offset-1 outline-dashed outline-zinc-300 " : "outline-none ") +
         (selected ? "relative z-10 ring-2 ring-orange-400 ring-offset-2" : "hover:ring-1 hover:ring-orange-300") +
         " " + className
       }
       data-node-id={node.id}
-      draggable={Boolean(drag.onDragStart)}
       onClick={(event) => {
         event.stopPropagation();
         actions.choose(node);
       }}
-      onDragOver={drag.onDragOver}
-      onDragStart={drag.onDragStart}
-      onDrop={drag.onDrop}
       onKeyDown={(event) => {
         if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
@@ -1334,6 +1314,24 @@ function PreviewSelectable({
       tabIndex={0}
     >
       {children}
+      {selected && (
+        <button
+          aria-haspopup="dialog"
+          aria-label={`Move ${label}`}
+          className="absolute top-0 right-0 z-10 flex size-7 cursor-grab items-center justify-center rounded-bl-md bg-orange-500 text-white shadow-sm select-none active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600"
+          data-canvas-move-handle
+          draggable
+          onClick={(event) => {
+            event.stopPropagation();
+            move.openDialog(node.id);
+          }}
+          onDoubleClick={(event) => event.stopPropagation()}
+          onDragStart={(event) => move.start(event, node.id)}
+          type="button"
+        >
+          <GripVertical aria-hidden="true" className="size-4" />
+        </button>
+      )}
     </div>
   );
 }
@@ -1363,17 +1361,17 @@ const presetContainerClasses: Record<string, string> = {
   "preset-stat": "grid gap-2 rounded-lg bg-white p-7 text-center text-zinc-900 [&_h2]:text-5xl",
 };
 
-function PreviewNode({ actions, node, breakpoint }: { actions: EditorActions; node: EditorNode; breakpoint: Breakpoint }) {
+function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActions; node: EditorNode; breakpoint: Breakpoint; move: PreviewMove }) {
   const page = actions.page;
   if (!node.visible || !page) return null;
   const { content, metadata } = node;
   const appearance = typeof metadata?.appearance === "string" ? metadata.appearance : "";
   const children = node.childIds.map((id) => (
-    <PreviewNode actions={actions} breakpoint={breakpoint} key={id} node={page.nodes[id]} />
+    <PreviewNode actions={actions} breakpoint={breakpoint} key={id} move={move} node={page.nodes[id]} />
   ));
   const style = resolveStyles(node, breakpoint);
   const frame = (className: string, body?: ReactNode, nested: ReactNode = children) => (
-    <PreviewSelectable actions={actions} className={className} node={node} style={style}>
+    <PreviewSelectable actions={actions} className={className} emptyContainer={isContainer(node.type) && !node.childIds.some((id) => page.nodes[id].visible)} move={move} node={node} style={style}>
       {body}
       {nested}
     </PreviewSelectable>
@@ -1474,7 +1472,9 @@ function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }
   const narrowPreview = viewport.width < 510;
   const browserHeaderHeight = compactPreview ? 48 : 64;
   const page = actions.page;
-  const { indicator, handlers } = useQuickInsertDrop(page, actions.insertDrag, actions.insertItem);
+  const { indicator, handlers, startMove } = useCanvasDrop(page, actions.insertDrag, actions.insertItem, actions.moveCanvasNode);
+  const [moveDialog, setMoveDialog] = useState<{ nodeId: string; open: boolean } | null>(null);
+  const move = { start: startMove, openDialog: (nodeId: string) => setMoveDialog({ nodeId, open: true }) };
   const hasVisibleContent = page?.rootIds.some((id) => page.nodes[id].visible);
   const breakpoint: Breakpoint = narrowPreview ? "mobile" : viewport.width <= 768 ? "tablet" : "base";
 
@@ -1501,7 +1501,7 @@ function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }
         {hasVisibleContent ? (
           <div className="w-full text-left">
             {page?.rootIds.map((id) => (
-              <PreviewNode actions={actions} breakpoint={breakpoint} key={id} node={page.nodes[id]} />
+              <PreviewNode actions={actions} breakpoint={breakpoint} key={id} move={move} node={page.nodes[id]} />
             ))}
           </div>
         ) : (
@@ -1520,12 +1520,28 @@ function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }
           </Empty>
         )}
         {indicator && (
-          <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-20" data-insertion-indicator={indicator.placement}>
-            {indicator.container && <div className="absolute border-2 border-orange-400 bg-orange-400/5" style={indicator.container} />}
-            <div className="absolute rounded-full bg-orange-500" style={indicator.line} />
+          <div className="pointer-events-none absolute inset-0 z-20" data-insertion-indicator={indicator.placement}>
+            {indicator.container && <div aria-hidden="true" className={"absolute border-2 " + (indicator.reason ? "border-red-500 bg-red-500/5" : "border-orange-400 bg-orange-400/5")} style={indicator.container} />}
+            <div aria-hidden="true" className={"absolute rounded-full " + (indicator.reason ? "bg-red-500" : "bg-orange-500")} style={indicator.line} />
+            {indicator.reason && (
+              <span className="absolute left-2 rounded bg-red-700 px-2 py-1 text-sm text-white" role="status" style={{ top: Math.max(0, indicator.line.top - 30) }}>
+                {indicator.reason}
+              </span>
+            )}
           </div>
         )}
       </section>
+      {page && moveDialog && Object.hasOwn(page.nodes, moveDialog.nodeId) && (
+        <LayerMoveDialog
+          key={moveDialog.nodeId}
+          nodeId={moveDialog.nodeId}
+          open={moveDialog.open}
+          onClose={() => setMoveDialog({ ...moveDialog, open: false })}
+          onMove={actions.moveLayer}
+          page={page}
+          restoreFocus={() => artboardRef.current?.querySelector<HTMLElement>("[data-canvas-move-handle]") ?? null}
+        />
+      )}
     </article>
   );
 }
@@ -2156,32 +2172,27 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
     choose({ ...node, parentId });
   }
 
-  function moveBeforeSibling(sourceId: string, targetId: string) {
-    if (!page || !Object.hasOwn(page.nodes, sourceId)) return;
-    const source = page.nodes[sourceId];
-    const target = page.nodes[targetId];
-    if (target.parentId === null || target.parentId !== source.parentId || sourceId === targetId) return;
-    const siblingIds = page.nodes[target.parentId].childIds;
-    const sourceIndex = siblingIds.indexOf(sourceId);
-    const targetIndex = siblingIds.indexOf(targetId);
-    const index = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
-    if (index === sourceIndex) return;
-    edit({ type: "node.move", pageId: page.id, nodeId: sourceId, parentId: target.parentId, index });
-    choose(source);
+  function moveCanvasNode(sourceId: string, target: InsertionTarget) {
+    moveNode(sourceId, (page) => proposeNodeMoveAt(page, sourceId, target), true);
   }
 
   function moveLayer(sourceId: string, targetId: string, placement: MovePlacement) {
+    moveNode(sourceId, (page) => proposeNodeMove(page, sourceId, targetId, placement));
+  }
+
+  function moveNode(sourceId: string, propose: (page: PageDocument) => ReturnType<typeof proposeNodeMove>, fromCanvas = false) {
     if (!page) return;
-    const { operation } = proposeNodeMove(page, sourceId, targetId, placement);
+    const { operation } = propose(page);
     if (!operation) return;
     commit((document) => {
       const currentPage = document.pages.find((candidate) => candidate.id === page.id);
       if (!currentPage) return document;
-      const { operation } = proposeNodeMove(currentPage, sourceId, targetId, placement);
+      const { operation } = propose(currentPage);
       return operation ? applyDocumentOperation(document, operation) : document;
     });
     const parent = operation.parentId === null ? null : page.nodes[operation.parentId];
     expandLayers(page.id, ancestorNodes(page, parent).map((ancestor) => ancestor.id));
+    if (fromCanvas) setLayerSelection({ pageId: page.id, id: sourceId });
   }
 
   function confirmLayerDelete() {
@@ -2325,7 +2336,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
   }, [changeVariant, current, showVariantSwitcher]);
 
   const actions: EditorActions = {
-    page, hasPage: page !== null, selectedNode, choose, insertItem, insertDrag, moveBeforeSibling, moveLayer, toggleLayerCollapse,
+    page, hasPage: page !== null, selectedNode, choose, insertItem, insertDrag, moveCanvasNode, moveLayer, toggleLayerCollapse,
     selection: selectedNode ? layerSelection : null,
     expandLayer: (id) => { if (page) expandLayers(page.id, [id]); },
     isLayerCollapsed: (id) => page !== null && (collapsedLayers[page.id] ?? []).includes(id),

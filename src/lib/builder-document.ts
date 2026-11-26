@@ -153,16 +153,29 @@ export function proposeNodeMove(page: PageDocument, nodeId: string, targetId: st
   if (!Object.hasOwn(page.nodes, nodeId) || !Object.hasOwn(page.nodes, targetId)) {
     return { operation: null, reason: "The layer is no longer available" };
   }
-  const node = page.nodes[nodeId];
   const target = page.nodes[targetId];
   const parentId = placement === "inside" ? target.id : target.parentId;
+  const siblings = siblingsAt(page, parentId);
+  const index = placement === "inside" ? siblings.length : siblings.indexOf(targetId) + Number(placement === "after");
+  return proposeNodeMoveAt(page, nodeId, { pageId: page.id, parentId, index, placement });
+}
+
+export function proposeNodeMoveAt(page: PageDocument, nodeId: string, target: InsertionTarget):
+  { operation: MoveOperation; reason: null } | { operation: null; reason: string } {
+  if (target.pageId !== page.id || !Object.hasOwn(page.nodes, nodeId)) {
+    return { operation: null, reason: "The layer is no longer available" };
+  }
+  const node = page.nodes[nodeId];
+  const { parentId, index: boundary } = target;
   const error = moveError(page, node, parentId);
   if (error) return { operation: null, reason: error };
 
   // Move indices are relative to the destination after removing the source.
   const siblings = siblingsAt(page, parentId);
+  if (!Number.isInteger(boundary) || boundary < 0 || boundary > siblings.length) {
+    return { operation: null, reason: "The destination position is no longer available" };
+  }
   const sourceIndex = siblings.indexOf(nodeId);
-  const boundary = placement === "inside" ? siblings.length : siblings.indexOf(targetId) + Number(placement === "after");
   const index = sourceIndex !== -1 && sourceIndex < boundary ? boundary - 1 : boundary;
   if (sourceIndex === index) return { operation: null, reason: "The layer is already in this position" };
   return { operation: { type: "node.move", pageId: page.id, nodeId, parentId, index }, reason: null };

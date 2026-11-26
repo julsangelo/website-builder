@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyDocumentOperation, canInsertAt, insertionAtSelection, proposeNodeMove, resolveStyles, selectionAfterDelete, validatePageTree, type PageDocument, type SiteDocument } from "./builder-document.ts";
+import { applyDocumentOperation, canInsertAt, insertionAtSelection, proposeNodeMove, proposeNodeMoveAt, resolveStyles, selectionAfterDelete, validatePageTree, type InsertionTarget, type PageDocument, type SiteDocument } from "./builder-document.ts";
 import { buildSection, createBlock, createSection, sectionPresets } from "./builder-presets.ts";
 import { emptyDocument, loadEditorSave } from "./builder-storage.ts";
 
@@ -147,6 +147,36 @@ test("Layer move proposals support root and nested destinations and reject inval
   assert.equal(nestedSection.operation, null);
   assert.match(nestedSection.reason, /page root/);
   assert.equal(JSON.stringify(document), snapshot);
+});
+
+test("Canvas move boundaries support pointer-derived positions and empty containers", () => {
+  const initial = insertPreset("hero");
+  const [sectionId] = initial.pages[0].rootIds;
+  const [contentId, mediaId] = initial.pages[0].nodes[sectionId].childIds;
+  const document = applyDocumentOperation(initial, {
+    type: "node.insert", pageId: "page", parentId: sectionId, index: 2, node: createBlock("empty", "box"),
+  });
+  const [page] = document.pages;
+  const [eyebrow, heading, description, button] = page.nodes[contentId].childIds;
+  const target: InsertionTarget = { pageId: page.id, parentId: contentId, index: 3, placement: "inside" };
+  const reorder = proposeNodeMoveAt(page, eyebrow, target);
+  assert.ok(reorder.operation);
+  assert.deepEqual(applyDocumentOperation(document, reorder.operation).pages[0].nodes[contentId].childIds, [heading, description, eyebrow, button]);
+  assert.equal(proposeNodeMoveAt(page, eyebrow, { ...target, index: 1 }).operation, null);
+
+  const intoEmpty = proposeNodeMoveAt(page, heading, { ...target, parentId: "empty", index: 0 });
+  assert.ok(intoEmpty.operation);
+  assert.deepEqual(intoEmpty, proposeNodeMove(page, heading, "empty", "inside"));
+  const moved = applyDocumentOperation(document, intoEmpty.operation).pages[0];
+  validatePageTree(moved);
+  assert.deepEqual(moved.nodes.empty.childIds, [heading]);
+  assert.deepEqual(moved.nodes[contentId].childIds, [eyebrow, description, button]);
+  assert.equal(moved.nodes[heading].parentId, "empty");
+  assert.match(proposeNodeMoveAt(page, sectionId, target).reason!, /page root/);
+  assert.match(proposeNodeMoveAt(page, contentId, target).reason!, /descendant/);
+  assert.match(proposeNodeMoveAt(page, heading, { ...target, parentId: mediaId }).reason!, /container/);
+  assert.match(proposeNodeMoveAt(page, heading, { ...target, index: 5 }).reason!, /position/);
+  assert.match(proposeNodeMoveAt(page, heading, { ...target, pageId: "other-page" }).reason!, /no longer available/);
 });
 
 test("Hiding a container and reloading preserves each descendant's own visibility", () => {

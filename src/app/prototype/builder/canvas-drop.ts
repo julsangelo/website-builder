@@ -1,11 +1,12 @@
-import { type DragEvent, type RefObject, useEffect, useState } from "react";
-import { canInsertAt, isContainer, type BlockType, type InsertionTarget, type PageDocument } from "@/lib/builder-document";
+import { type DragEvent, type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { canInsertAt, isContainer, proposeNodeMoveAt, type BlockType, type InsertionTarget, type PageDocument } from "@/lib/builder-document";
 import type { SectionPreset } from "@/lib/builder-presets";
 
 export type QuickInsertItem = { source: "block"; type: BlockType } | { source: "preset"; preset: SectionPreset };
 export type QuickInsertDrag = { item: QuickInsertItem; pageId: string };
 
-const dragType = "application/x-forma-insertion";
+const insertDragType = "application/x-forma-insertion";
+const moveDragType = "application/x-forma-node";
 
 export function insertionType(item: QuickInsertItem): BlockType {
   return item.source === "preset" ? "section" : item.type;
@@ -14,12 +15,13 @@ export function insertionType(item: QuickInsertItem): BlockType {
 export function startQuickInsertDrag(event: DragEvent, sessionRef: RefObject<QuickInsertDrag | null>, source: QuickInsertDrag) {
   sessionRef.current = source;
   event.dataTransfer.effectAllowed = "copy";
-  event.dataTransfer.setData(dragType, "copy");
+  event.dataTransfer.setData(insertDragType, "copy");
 }
 
 type Point = { x: number; y: number };
 type Bounds = { left: number; top: number; width: number; height: number };
-type Indicator = { line: Bounds; container?: Bounds; placement: InsertionTarget["placement"] };
+type Indicator = { line: Bounds; container?: Bounds; placement: InsertionTarget["placement"]; reason?: string };
+type CanvasDrag = { effect: "copy"; item: QuickInsertItem } | { effect: "move"; nodeId: string };
 
 function flow(element: HTMLElement, childBounds: Bounds, point: Point) {
   const style = getComputedStyle(element);
@@ -35,7 +37,8 @@ function flow(element: HTMLElement, childBounds: Bounds, point: Point) {
   return { horizontal, reversed };
 }
 
-function measureDrop(surface: HTMLElement, page: PageDocument, type: BlockType, clientX: number, clientY: number) {
+function measureDrop(surface: HTMLElement, page: PageDocument, keepSectionAtRoot: boolean, clientX: number, clientY: number):
+  { target: InsertionTarget; indicator: Indicator } | null {
   const hit = surface.ownerDocument.elementFromPoint(clientX, clientY);
   if (!hit || !surface.contains(hit)) return null;
 
@@ -71,7 +74,7 @@ function measureDrop(surface: HTMLElement, page: PageDocument, type: BlockType, 
   let element = hit.closest<HTMLElement>("[data-node-id]");
   let node = element?.dataset.nodeId ? page.nodes[element.dataset.nodeId] : null;
   // Even over a nested block, a Section uses the top-level sibling boundary.
-  while (type === "section" && node && node.parentId !== null) {
+  while (keepSectionAtRoot && node && node.parentId !== null) {
     node = page.nodes[node.parentId];
     element = elementFor(node.id);
   }
@@ -80,7 +83,7 @@ function measureDrop(surface: HTMLElement, page: PageDocument, type: BlockType, 
   let container: Bounds | undefined;
   let parent = parentId === null ? surface : elementFor(parentId) ?? surface;
   let sibling = element && node ? { element, box: bounds(element) } : null;
-  if (sibling && node && type !== "section" && isContainer(node.type)) {
+  if (sibling && node && !keepSectionAtRoot && isContainer(node.type)) {
     const { box } = sibling;
     const { horizontal } = flow(parent, box, point);
     const length = horizontal ? box.width : box.height;
@@ -113,71 +116,99 @@ function measureDrop(surface: HTMLElement, page: PageDocument, type: BlockType, 
   }
 
   const target = { pageId: page.id, parentId, index, placement };
-  return canInsertAt(page, type, target) ? { target, indicator: { line, container, placement } } : null;
+  return { target, indicator: { line, container, placement } };
 }
 
 function sameBounds(a?: Bounds, b?: Bounds) {
   return a?.left === b?.left && a?.top === b?.top && a?.width === b?.width && a?.height === b?.height;
 }
 
-export function useQuickInsertDrop(
+export function useCanvasDrop(
   page: PageDocument | null,
-  sessionRef: RefObject<QuickInsertDrag | null>,
+  insertSessionRef: RefObject<QuickInsertDrag | null>,
   insert: (item: QuickInsertItem, target: InsertionTarget) => void,
+  move: (id: string, target: InsertionTarget) => void,
 ) {
+  const moveSession = useRef<{ pageId: string; nodeId: string } | null>(null);
   const [indicator, setIndicator] = useState<Indicator | null>(null);
   const pageId = page?.id;
+  const finish = useCallback(() => {
+    insertSessionRef.current = null;
+    moveSession.current = null;
+    setIndicator(null);
+  }, [insertSessionRef]);
 
   useEffect(() => {
-    function finish() {
-      sessionRef.current = null;
-      setIndicator(null);
-    }
     function cancel(event: KeyboardEvent) {
-      if (event.key === "Escape" && sessionRef.current) finish();
+      if (event.key === "Escape" && (insertSessionRef.current || moveSession.current)) finish();
     }
     window.addEventListener("dragend", finish, true);
     window.addEventListener("keydown", cancel, true);
     return () => {
-      sessionRef.current = null;
+      insertSessionRef.current = null;
+      moveSession.current = null;
       window.removeEventListener("dragend", finish, true);
       window.removeEventListener("keydown", cancel, true);
     };
-  }, [pageId, sessionRef]);
+  }, [finish, pageId, insertSessionRef]);
 
-  function readDrop(event: DragEvent<HTMLElement>) {
-    const source = sessionRef.current;
-    return source && page && source.pageId === page.id
-      ? measureDrop(event.currentTarget, page, insertionType(source.item), event.clientX, event.clientY)
-      : null;
+  function startMove(event: DragEvent<HTMLButtonElement>, nodeId: string) {
+    if (!pageId) return;
+    moveSession.current = { pageId, nodeId };
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(moveDragType, nodeId);
+  }
+
+  function readSource(event: DragEvent<HTMLElement>): CanvasDrag | null {
+    if (!page) return null;
+    const { types } = event.dataTransfer;
+    const moving = moveSession.current;
+    if (moving?.pageId === page.id && types.includes(moveDragType)) return { effect: "move", nodeId: moving.nodeId };
+    const inserting = insertSessionRef.current;
+    if (inserting?.pageId === page.id && types.includes(insertDragType)) return { effect: "copy", item: inserting.item };
+    return null;
+  }
+
+  function readDrop(event: DragEvent<HTMLElement>, source: CanvasDrag) {
+    if (!page) return null;
+    const type = source.effect === "copy" ? insertionType(source.item) : null;
+    const drop = measureDrop(event.currentTarget, page, type === "section", event.clientX, event.clientY);
+    if (!drop) return null;
+    if (source.effect === "move") {
+      const { reason } = proposeNodeMoveAt(page, source.nodeId, drop.target);
+      return { ...drop, indicator: { ...drop.indicator, reason: reason ?? undefined } };
+    }
+    return type && canInsertAt(page, type, drop.target) ? drop : null;
   }
 
   function onDragOver(event: DragEvent<HTMLElement>) {
-    if (!event.dataTransfer.types.includes(dragType)) return;
-    const drop = readDrop(event);
-    if (drop) event.preventDefault();
-    event.dataTransfer.dropEffect = drop ? "copy" : "none";
+    const source = readSource(event);
+    if (!source) return;
+    event.preventDefault();
+    const drop = readDrop(event, source);
+    event.dataTransfer.dropEffect = drop && !drop.indicator.reason ? source.effect : "none";
     const next = drop?.indicator ?? null;
     setIndicator((current) => current?.placement === next?.placement && sameBounds(current?.line, next?.line)
-      && sameBounds(current?.container, next?.container) ? current : next);
+      && sameBounds(current?.container, next?.container) && current?.reason === next?.reason ? current : next);
   }
 
   function onDragLeave(event: DragEvent<HTMLElement>) {
-    if (!sessionRef.current) return;
+    if (!readSource(event)) return;
     const { currentTarget, relatedTarget, clientX, clientY } = event;
     const next = relatedTarget instanceof Node ? relatedTarget : currentTarget.ownerDocument.elementFromPoint(clientX, clientY);
     if (!currentTarget.contains(next)) setIndicator(null);
   }
 
   function onDrop(event: DragEvent<HTMLElement>) {
-    if (!event.dataTransfer.types.includes(dragType)) return;
+    const source = readSource(event);
+    if (!source) return;
     event.preventDefault();
-    const source = sessionRef.current;
-    const drop = readDrop(event);
-    sessionRef.current = null;
-    setIndicator(null);
-    if (source && drop) insert(source.item, drop.target);
+    const drop = readDrop(event, source);
+    finish();
+    if (!drop || drop.indicator.reason) return;
+    if (source.effect === "move") move(source.nodeId, drop.target);
+    else insert(source.item, drop.target);
   }
 
-  return { indicator, handlers: { onDragOver, onDragLeave, onDrop } };
+  return { indicator, startMove, handlers: { onDragOver, onDragLeave, onDrop } };
 }
