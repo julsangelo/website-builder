@@ -16,6 +16,7 @@ export type NodeContent = {
   href?: string;
   imageAssetId?: string;
   imageUrl?: string;
+  target?: "_self" | "_blank";
   title?: string;
 };
 

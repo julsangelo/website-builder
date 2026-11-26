@@ -58,7 +58,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Accordion,
   AccordionContent,
@@ -99,6 +99,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog } from "@base-ui/react/dialog";
+import { ButtonLinkControl, PreviewText } from "./preview-content";
 import {
   applyDocumentOperation,
   canInsertAt,
@@ -1275,12 +1276,13 @@ type PreviewMove = {
 };
 
 function PreviewSelectable({
-  actions, children, className, emptyContainer, move, node, style,
+  actions, children, className, emptyContainer, hasButton, move, node, style,
 }: {
   actions: EditorActions;
   children: ReactNode;
   className: string;
   emptyContainer: boolean;
+  hasButton: boolean;
   move: PreviewMove;
   node: EditorNode;
   style: CSSProperties;
@@ -1314,11 +1316,14 @@ function PreviewSelectable({
       tabIndex={0}
     >
       {children}
+      {selected && hasButton && (
+        <ButtonLinkControl content={node.content} onCommit={(content) => actions.updateBlockContent(node.id, content)} />
+      )}
       {selected && (
         <button
           aria-haspopup="dialog"
           aria-label={`Move ${label}`}
-          className="absolute top-0 right-0 z-10 flex size-7 cursor-grab items-center justify-center rounded-bl-md bg-orange-500 text-white shadow-sm select-none active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600"
+          className={`absolute z-10 flex size-7 cursor-grab items-center justify-center bg-orange-500 text-white shadow-sm select-none active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600 ${hasButton ? "bottom-full left-7 rounded-tr-md" : "top-0 right-0 rounded-bl-md"}`}
           data-canvas-move-handle
           draggable
           onClick={(event) => {
@@ -1370,8 +1375,25 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
     <PreviewNode actions={actions} breakpoint={breakpoint} key={id} move={move} node={page.nodes[id]} />
   ));
   const style = resolveStyles(node, breakpoint);
+  const hasButton = node.type === "button" || node.type === "card" || node.type === "form" || node.type === "navigation";
+  const updateContent = (content: NodeContent) => actions.updateBlockContent(node.id, content);
+  const text = (
+    field: "title" | "body" | "buttonLabel",
+    as: "h1" | "h2" | "p" | "span",
+    className?: string,
+  ) => (
+    <PreviewText
+      as={as}
+      className={className}
+      field={field}
+      label={field === "buttonLabel" ? "Button label" : nodeDetails(node).label}
+      multiline={field !== "buttonLabel"}
+      onCommit={updateContent}
+      value={content[field]}
+    />
+  );
   const frame = (className: string, body?: ReactNode, nested: ReactNode = children) => (
-    <PreviewSelectable actions={actions} className={className} emptyContainer={isContainer(node.type) && !node.childIds.some((id) => page.nodes[id].visible)} move={move} node={node} style={style}>
+    <PreviewSelectable actions={actions} className={className} emptyContainer={isContainer(node.type) && !node.childIds.some((id) => page.nodes[id].visible)} hasButton={hasButton} move={move} node={node} style={style}>
       {body}
       {nested}
     </PreviewSelectable>
@@ -1399,26 +1421,26 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
       ), null);
     }
     case "preset-heading":
-      return frame("font-semibold tracking-tight", <h2>{content.title}</h2>);
+      return frame("font-semibold tracking-tight", text("title", "h2"));
     case "preset-text":
-      return frame("text-sm whitespace-pre-line", <p>{content.body}</p>);
+      return frame("text-sm", text("body", "p"));
     case "preset-button":
-      return frame("w-fit", <Button size="sm" type="button" variant="outline">{content.buttonLabel}</Button>);
+      return frame("w-fit", text("buttonLabel", "span", buttonVariants({ size: "sm", variant: "outline" })));
     case "preset-image":
       if (content.imageUrl) style.backgroundImage ??= `url(${JSON.stringify(content.imageUrl)})`;
       return frame("min-h-40 rounded-lg bg-linear-to-br from-[#d5c4ac] via-[#8e7159] to-[#455143] bg-cover bg-center", content.alt && <span className="sr-only">{content.alt}</span>);
     case "hero-eyebrow":
     case "content-media-eyebrow":
-      return frame("w-fit rounded-md text-xs font-medium tracking-[0.18em] text-zinc-500 uppercase", content.body);
+      return frame("w-fit rounded-md text-xs font-medium tracking-[0.18em] text-zinc-500 uppercase", text("body", "span", "block"));
     case "hero-heading":
-      return frame("max-w-xl rounded-md font-semibold tracking-[-0.06em] text-zinc-900 " + (breakpoint === "base" ? "text-6xl" : "text-5xl"), <h1>{content.title}</h1>);
+      return frame("max-w-xl rounded-md font-semibold tracking-[-0.06em] text-zinc-900 " + (breakpoint === "base" ? "text-6xl" : "text-5xl"), text("title", "h1"));
     case "content-media-heading":
-      return frame("rounded-md text-4xl font-semibold tracking-[-0.04em]", <h2>{content.title}</h2>);
+      return frame("rounded-md text-4xl font-semibold tracking-[-0.04em]", text("title", "h2"));
     case "hero-description":
     case "content-media-description":
-      return frame("max-w-md rounded-md text-sm leading-6 opacity-80", <p>{content.body}</p>);
+      return frame("max-w-md rounded-md text-sm leading-6 opacity-80", text("body", "p"));
     case "hero-cta-button":
-      return frame("inline-flex w-fit rounded-md bg-zinc-900 px-4 py-3 text-sm font-medium text-white", content.buttonLabel);
+      return frame("inline-flex w-fit rounded-md bg-zinc-900 text-sm font-medium text-white", text("buttonLabel", "span", "px-4 py-3"));
     case "hero-image":
     case "content-media-media":
       if (content.imageUrl) style.backgroundImage ??= `url(${JSON.stringify(content.imageUrl)})`;
@@ -1426,42 +1448,42 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
         ? "bg-linear-to-br from-[#8f765d] via-[#c7b08d] to-[#e6d9c5]"
         : "bg-linear-to-bl from-[#d7c7af] via-[#887764] to-[#3f433d]"), content.alt && <span className="sr-only">{content.alt}</span>);
     case "section":
-      return frame("rounded-xl bg-[#f5f2ec] px-8 py-12 text-center", <><p className="text-2xl font-semibold tracking-tight text-zinc-900">{content.title}</p><p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-zinc-600">{content.body}</p></>);
+      return frame("rounded-xl bg-[#f5f2ec] px-8 py-12 text-center", <>{text("title", "p", "text-2xl font-semibold tracking-tight text-zinc-900")}{text("body", "p", "mx-auto mt-3 max-w-lg text-sm leading-6 text-zinc-600")}</>);
   }
 
   switch (node.type) {
     case "section":
-      return frame("rounded-xl bg-[#f5f2ec] px-8 py-12 text-center", <><p className="text-2xl font-semibold tracking-tight text-zinc-900">{content.title}</p><p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-zinc-600">{content.body}</p></>);
+      return frame("rounded-xl bg-[#f5f2ec] px-8 py-12 text-center", <>{text("title", "p", "text-2xl font-semibold tracking-tight text-zinc-900")}{text("body", "p", "mx-auto mt-3 max-w-lg text-sm leading-6 text-zinc-600")}</>);
     case "box":
-      return frame("bg-white p-8", <><Card className="border border-dashed border-zinc-300 bg-zinc-50 shadow-none"><CardContent className="p-8 text-center text-sm text-zinc-500">{content.body}</CardContent></Card></>);
+      return frame("bg-white p-8", <Card className="border border-dashed border-zinc-300 bg-zinc-50 shadow-none"><CardContent className="p-8 text-center text-sm text-zinc-500">{text("body", "p")}</CardContent></Card>);
     case "stack":
-      return frame("bg-white p-8", <><Card className="border border-zinc-200 shadow-none"><CardHeader><CardTitle>{content.title}</CardTitle><CardDescription>{content.body}</CardDescription></CardHeader><CardContent><div className="h-2 w-3/4 rounded-full bg-zinc-200" /></CardContent></Card></>);
+      return frame("bg-white p-8", <Card className="border border-zinc-200 shadow-none"><CardHeader><CardTitle>{text("title", "span", "block")}</CardTitle><CardDescription>{text("body", "span", "block")}</CardDescription></CardHeader><CardContent><div className="h-2 w-3/4 rounded-full bg-zinc-200" /></CardContent></Card>);
     case "grid":
       return frame("bg-white p-6", <><div className="grid grid-cols-3 gap-4">{["Discover", "Create", "Launch"].map((label, index) => <Card className="border border-zinc-200 bg-zinc-50 shadow-none" key={label}><CardContent className="p-5"><span className="text-xs text-zinc-400">0{index + 1}</span><p className="mt-6 text-sm font-semibold text-zinc-900">{label}</p></CardContent></Card>)}</div></>);
     case "heading":
-      return frame("rounded-xl bg-white px-8 py-10", <><h2 className="max-w-3xl text-4xl font-semibold tracking-[-0.04em] text-zinc-900">{content.title}</h2></>);
+      return frame("rounded-xl bg-white", text("title", "h2", "px-8 py-10 text-4xl font-semibold tracking-[-0.04em] text-zinc-900 max-w-[52rem]"));
     case "text":
-      return frame("rounded-xl bg-white px-8 py-6", <><p className="max-w-2xl text-base leading-7 text-zinc-600">{content.body}</p></>);
+      return frame("rounded-xl bg-white", text("body", "p", "px-8 py-6 text-base leading-7 text-zinc-600 max-w-[46rem]"));
     case "image":
       return frame("overflow-hidden rounded-xl", <><div className={content.imageUrl ? "h-64 bg-cover bg-center" : "h-64 bg-linear-to-br from-[#d9d1c3] via-[#a8947c] to-[#4f584b]"} style={content.imageUrl ? { backgroundImage: `url(${JSON.stringify(content.imageUrl)})` } : undefined}>{!content.imageUrl && <div className="h-full w-full bg-[radial-gradient(circle_at_70%_35%,rgba(255,255,255,.55),transparent_26%),radial-gradient(circle_at_25%_80%,rgba(36,46,39,.45),transparent_36%)]" />}</div></>);
     case "button":
-      return frame("inline-flex", <><Button className="bg-zinc-900 px-5 text-sm text-white hover:bg-zinc-800" type="button">{content.buttonLabel}</Button></>);
+      return frame("inline-flex", text("buttonLabel", "span", buttonVariants({ className: "bg-zinc-900 px-5 text-sm text-white hover:bg-zinc-800" })));
     case "divider":
       return frame("py-5", <><Separator /></>);
     case "card":
-      return frame("bg-zinc-50 p-6", <><Card className="border border-zinc-200 bg-white shadow-none"><CardHeader><CardTitle>{content.title}</CardTitle><CardDescription>{content.body}</CardDescription></CardHeader><CardFooter><Button size="sm" variant="outline">{content.buttonLabel}</Button></CardFooter></Card></>);
+      return frame("bg-zinc-50 p-6", <Card className="border border-zinc-200 bg-white shadow-none"><CardHeader><CardTitle>{text("title", "span", "block")}</CardTitle><CardDescription>{text("body", "span", "block")}</CardDescription></CardHeader><CardFooter>{text("buttonLabel", "span", buttonVariants({ size: "sm", variant: "outline" }))}</CardFooter></Card>);
     case "quote":
-      return frame("bg-zinc-50 p-8", <><Card className="border border-zinc-200 bg-white shadow-none"><CardContent className="p-8"><p className="text-2xl leading-tight tracking-[-0.03em] text-zinc-900">{content.body}</p><p className="mt-5 text-sm text-zinc-500">{content.title}</p></CardContent></Card></>);
+      return frame("bg-zinc-50 p-8", <Card className="border border-zinc-200 bg-white shadow-none"><CardContent className="p-8">{text("body", "p", "text-2xl leading-tight tracking-[-0.03em] text-zinc-900")}{text("title", "p", "mt-5 text-sm text-zinc-500")}</CardContent></Card>);
     case "stat":
-      return frame("bg-zinc-50 p-6", <><Card className="border border-zinc-200 bg-white text-center shadow-none"><CardContent className="p-7"><p className="text-5xl font-semibold tracking-[-0.05em] text-zinc-900">{content.title}</p><p className="mt-2 text-sm text-zinc-500">{content.body}</p></CardContent></Card></>);
+      return frame("bg-zinc-50 p-6", <Card className="border border-zinc-200 bg-white text-center shadow-none"><CardContent className="p-7">{text("title", "p", "text-5xl font-semibold tracking-[-0.05em] text-zinc-900")}{text("body", "p", "mt-2 text-sm text-zinc-500")}</CardContent></Card>);
     case "accordion":
-      return frame("bg-white p-6", <><Accordion className="rounded-lg border border-zinc-200 px-4" defaultValue={["first"]}><AccordionItem value="first"><AccordionTrigger>{content.title}</AccordionTrigger><AccordionContent>{content.body}</AccordionContent></AccordionItem><AccordionItem value="second"><AccordionTrigger>How long does it take?</AccordionTrigger><AccordionContent>Timelines are shaped around your team, scope, and launch goals.</AccordionContent></AccordionItem></Accordion></>);
+      return frame("bg-white p-6", <Accordion className="rounded-lg border border-zinc-200 px-4" defaultValue={["first"]}><AccordionItem value="first"><AccordionTrigger>{content.title}</AccordionTrigger><AccordionContent>{text("body", "p")}</AccordionContent></AccordionItem><AccordionItem value="second"><AccordionTrigger>How long does it take?</AccordionTrigger><AccordionContent>Timelines are shaped around your team, scope, and launch goals.</AccordionContent></AccordionItem></Accordion>);
     case "form":
-      return frame("bg-zinc-50 p-6", <><Card className="border border-zinc-200 bg-white shadow-none"><CardHeader><CardTitle>{content.title}</CardTitle><CardDescription>{content.body}</CardDescription></CardHeader><CardContent className="grid gap-3"><Input placeholder="Your name" /><Input placeholder="you@example.com" /><Input placeholder="How can we help?" /></CardContent><CardFooter><Button>{content.buttonLabel}</Button></CardFooter></Card></>);
+      return frame("bg-zinc-50 p-6", <Card className="border border-zinc-200 bg-white shadow-none"><CardHeader><CardTitle>{text("title", "span", "block")}</CardTitle><CardDescription>{text("body", "span", "block")}</CardDescription></CardHeader><CardContent className="grid gap-3"><Input placeholder="Your name" /><Input placeholder="you@example.com" /><Input placeholder="How can we help?" /></CardContent><CardFooter>{text("buttonLabel", "span", buttonVariants())}</CardFooter></Card>);
     case "navigation":
-      return frame("bg-white p-4", <><Card className="border border-zinc-200 bg-white shadow-none"><CardContent className="flex items-center justify-between p-4"><span className="font-semibold text-zinc-900">{content.title}</span><span className="flex gap-4 text-sm text-zinc-600"><span>Studio</span><span>Work</span><span>Journal</span></span><Button size="sm">{content.buttonLabel}</Button></CardContent></Card></>);
+      return frame("bg-white p-4", <Card className="border border-zinc-200 bg-white shadow-none"><CardContent className="flex items-center justify-between p-4">{text("title", "span", "font-semibold text-zinc-900")}<span className="flex gap-4 text-sm text-zinc-600"><span>Studio</span><span>Work</span><span>Journal</span></span>{text("buttonLabel", "span", buttonVariants({ size: "sm" }))}</CardContent></Card>);
     case "footer":
-      return frame("bg-zinc-950 p-6", <><Card className="border-zinc-800 bg-zinc-950 text-zinc-200 shadow-none"><CardContent className="flex items-center justify-between p-4"><span className="font-semibold text-white">{content.title}</span><span className="text-xs text-zinc-500">{content.body}</span></CardContent></Card></>);
+      return frame("bg-zinc-950 p-6", <Card className="border-zinc-800 bg-zinc-950 text-zinc-200 shadow-none"><CardContent className="flex items-center justify-between p-4">{text("title", "span", "font-semibold text-white")}{text("body", "span", "text-xs text-zinc-500")}</CardContent></Card>);
     case "input":
       return frame("rounded-md", <Input aria-label={content.body} placeholder={content.body} />);
   }
@@ -1499,7 +1521,7 @@ function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }
         {...handlers}
       >
         {hasVisibleContent ? (
-          <div className="w-full text-left">
+          <div className="w-full text-left" key={page?.id}>
             {page?.rootIds.map((id) => (
               <PreviewNode actions={actions} breakpoint={breakpoint} key={id} move={move} node={page.nodes[id]} />
             ))}
@@ -2308,7 +2330,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
   useEffect(() => {
     const handleHistoryShortcut = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest("input, textarea, [contenteditable='true']")) return;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
       if (!event.ctrlKey && !event.metaKey) return;
       if (event.key.toLowerCase() === "z") {
         event.preventDefault();
@@ -2327,7 +2349,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
     if (!showVariantSwitcher) return;
     function handleKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
-      if (target?.closest("input, textarea, [contenteditable='true'], [role='separator']")) return;
+      if (target?.closest("input, textarea, select, [contenteditable='true'], [role='separator']")) return;
       if (event.key === "ArrowLeft") changeVariant(adjacentVariant(current, -1));
       if (event.key === "ArrowRight") changeVariant(adjacentVariant(current, 1));
     }

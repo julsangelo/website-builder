@@ -303,9 +303,11 @@ export function materializePresetElements(
   }
 
   function action(node: EditorNode, label: string) {
-    const { buttonLabel, href, ...remaining } = node.content;
+    const { buttonLabel, href, target, ...remaining } = node.content;
     node.content = remaining;
-    if (buttonLabel !== undefined || href !== undefined) add(node, "action", "button", label, { buttonLabel: buttonLabel ?? "", ...(href !== undefined && { href }) });
+    if (buttonLabel !== undefined || href !== undefined || target !== undefined) {
+      add(node, "action", "button", label, { buttonLabel: buttonLabel ?? "", ...(href !== undefined && { href }), ...(target !== undefined && { target }) });
+    }
   }
 
   function question(parent: EditorNode, role: string, title: string, body: string, open = false) {
