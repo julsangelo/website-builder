@@ -146,3 +146,98 @@ test("Hero button label and link are editable without navigation", async ({ page
   await expect(savedLink.getByRole("textbox", { name: "URL" })).toHaveValue("/projects");
   await expect(savedLink.getByRole("combobox", { name: "Open in" })).toHaveValue("_blank");
 });
+
+test("Hero image replacement validates URLs and uploads, preserves height, and saves one undo step", async ({ page }) => {
+  const section = page.locator('article [data-node-id][aria-label="Hero"]');
+  const surface = section.locator("[data-image-surface]");
+  const image = surface.locator("img");
+  const inspector = page.getByRole("tab", { name: "Style", exact: true }).locator("xpath=ancestor::aside");
+  const undo = page.getByRole("button", { name: "Undo", exact: true });
+  const redo = page.getByRole("button", { name: "Redo", exact: true });
+  const source = "/prototype/forma-hero.png";
+  const openEditor = async () => {
+    await surface.dblclick();
+    const editor = page.getByRole("dialog", { name: "Replace image" });
+    await expect(editor.getByRole("textbox", { name: "Image URL" })).toBeFocused();
+    return editor;
+  };
+
+  await section.click({ position: { x: 2, y: 2 } });
+  await expect(inspector.getByRole("tab", { name: "Settings", exact: true })).toBeVisible();
+  await expect(inspector.getByRole("button", { name: "Layout", exact: true })).toBeVisible();
+  await expect(inspector.getByText(/Inheriting|Hero section/)).toHaveCount(0);
+  const height = await surface.evaluate((element) => element.clientHeight);
+  expect(height).toBe(await section.evaluate((element) => element.clientHeight));
+
+  let editor = await openEditor();
+  await expect(inspector.getByRole("textbox", { name: "Image URL" })).toHaveCount(0);
+  await editor.getByRole("textbox", { name: "Image URL" }).fill(source);
+  await editor.getByRole("textbox", { name: "Alt text" }).fill("Original interior");
+  await editor.getByRole("button", { name: "Apply" }).click();
+  await expect(image).toHaveAttribute("src", source);
+  await expect(image).toHaveAttribute("alt", "Original interior");
+  await expect(image).toHaveCSS("object-fit", "cover");
+
+  await page.route("**/invalid-image.png", (route) => route.fulfill({ status: 200, contentType: "text/plain", body: "invalid image" }));
+  editor = await openEditor();
+  const url = editor.getByRole("textbox", { name: "Image URL" });
+  await url.clear();
+  await editor.getByRole("button", { name: "Apply" }).click();
+  await expect(editor.getByRole("alert")).toContainText("Enter an HTTP or HTTPS image URL");
+  await url.fill("/invalid-image.png");
+  await editor.getByRole("button", { name: "Apply" }).click();
+  await expect(editor.getByRole("alert")).toContainText("This URL could not be loaded as an image");
+  await expect(image).toHaveAttribute("src", source);
+
+  const upload = editor.getByLabel("Upload image");
+  await upload.setInputFiles({ name: "unsupported.txt", mimeType: "text/plain", buffer: Buffer.from("invalid image") });
+  await editor.getByRole("button", { name: "Apply" }).click();
+  await expect(editor.getByRole("alert")).toContainText("Choose a supported image file");
+  await upload.setInputFiles({ name: "corrupt.png", mimeType: "image/png", buffer: Buffer.from("invalid image") });
+  await editor.getByRole("button", { name: "Apply" }).click();
+  await expect(editor.getByRole("alert")).toContainText("This file could not be loaded as an image");
+  await expect(image).toHaveAttribute("src", source);
+
+  await upload.setInputFiles("public/prototype/forma-project-1.png");
+  await editor.getByRole("textbox", { name: "Alt text" }).fill("Uploaded interior");
+  await editor.getByRole("combobox", { name: "Object fit" }).selectOption("contain");
+  await editor.getByRole("button", { name: "Apply" }).click();
+  await expect(editor).toBeHidden();
+  await expect(image).toHaveAttribute("src", /^data:image\/png;base64,/);
+  await expect(image).toHaveAttribute("alt", "Uploaded interior");
+  await expect(image).toHaveCSS("object-fit", "contain");
+  expect(await image.evaluate((element) => element.clientHeight)).toBe(height);
+
+  await undo.click();
+  await expect(image).toHaveAttribute("src", source);
+  await expect(image).toHaveAttribute("alt", "Original interior");
+  await expect(image).toHaveCSS("object-fit", "cover");
+  await undo.click();
+  await expect(image).toHaveCount(0);
+  await expect(undo).toBeDisabled();
+
+  await redo.click();
+  await redo.click();
+  await expect(savedStatus(page)).toBeVisible();
+  await page.reload();
+  await expect(image).toHaveAttribute("src", /^data:image\/png;base64,/);
+  await expect(image).toHaveAttribute("alt", "Uploaded interior");
+  await expect(image).toHaveCSS("object-fit", "contain");
+  expect(await image.evaluate((element) => element.clientHeight)).toBe(height);
+});
+
+for (const viewport of ["Tablet", "Mobile"]) {
+  test(`Content + media image can be edited and cancelled in the ${viewport.toLowerCase()} viewport`, async ({ page }) => {
+    await page.getByRole("button", { name: `${viewport} viewport` }).click();
+    const surface = page.locator('article [data-node-id][aria-label="Content + media"] [data-image-surface]');
+    await surface.dblclick();
+    const editor = page.getByRole("dialog", { name: "Replace image" });
+    const url = editor.getByRole("textbox", { name: "Image URL" });
+    await expect(url).toBeFocused();
+    await url.fill("/prototype/forma-project-2.png");
+    await url.press("Escape");
+    await expect(editor).toBeHidden();
+    await expect(surface.locator("img")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Undo", exact: true })).toBeDisabled();
+  });
+}

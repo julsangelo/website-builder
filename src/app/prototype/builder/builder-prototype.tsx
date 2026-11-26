@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  type ChangeEvent,
   type CSSProperties,
   type DragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -97,9 +96,10 @@ import {
 } from "@/components/ui/resizable";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog } from "@base-ui/react/dialog";
 import { ButtonLinkControl, PreviewText } from "./preview-content";
+import { PreviewImage, type ImageEdit } from "./preview-image";
 import {
   applyDocumentOperation,
   canInsertAt,
@@ -295,6 +295,7 @@ type EditorActions = {
   toggleLayerCollapse: (layerId: string) => void;
   toggleLayerVisibility: (node: EditorNode) => void;
   updateBlockContent: (blockId: string, content: NodeContent) => void;
+  updateImage: (nodeId: string, breakpoint: Breakpoint, edit: ImageEdit) => void;
 };
 
 function IconButton({ label, children }: { label: string; children: ReactNode }) {
@@ -1405,6 +1406,26 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
   if (isContainer(node.type) && Object.hasOwn(presetContainerClasses, appearance)) {
     return frame(presetContainerClasses[appearance]);
   }
+  if (node.type === "image") {
+    const standalone = !["hero-image", "content-media-media", "preset-image"].includes(appearance);
+    const dimensions = appearance === "preset-image" ? "min-h-40 rounded-lg" : standalone ? "h-64 rounded-xl" : "min-h-80";
+    const gradient = {
+      "hero-image": "bg-linear-to-br from-[#8f765d] via-[#c7b08d] to-[#e6d9c5]",
+      "content-media-media": "bg-linear-to-bl from-[#d7c7af] via-[#887764] to-[#3f433d]",
+      "preset-image": "bg-linear-to-br from-[#d5c4ac] via-[#8e7159] to-[#455143]",
+    }[appearance] ?? "bg-linear-to-br from-[#d9d1c3] via-[#a8947c] to-[#4f584b]";
+    return frame(`relative ${dimensions} ${content.imageUrl ? "" : gradient}`, (
+      <PreviewImage
+        content={content}
+        objectFit={style.objectFit}
+        objectPosition={style.objectPosition}
+        onCommit={(edit) => actions.updateImage(node.id, breakpoint, edit)}
+        onSelect={() => actions.choose(node)}
+        selected={actions.selectedNode?.id === node.id}
+        standalone={standalone}
+      />
+    ));
+  }
   switch (appearance) {
     case "preset-grid":
       return frame("min-h-16 min-w-0 p-4");
@@ -1426,9 +1447,6 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
       return frame("text-sm", text("body", "p"));
     case "preset-button":
       return frame("w-fit", text("buttonLabel", "span", buttonVariants({ size: "sm", variant: "outline" })));
-    case "preset-image":
-      if (content.imageUrl) style.backgroundImage ??= `url(${JSON.stringify(content.imageUrl)})`;
-      return frame("min-h-40 rounded-lg bg-linear-to-br from-[#d5c4ac] via-[#8e7159] to-[#455143] bg-cover bg-center", content.alt && <span className="sr-only">{content.alt}</span>);
     case "hero-eyebrow":
     case "content-media-eyebrow":
       return frame("w-fit rounded-md text-xs font-medium tracking-[0.18em] text-zinc-500 uppercase", text("body", "span", "block"));
@@ -1441,12 +1459,6 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
       return frame("max-w-md rounded-md text-sm leading-6 opacity-80", text("body", "p"));
     case "hero-cta-button":
       return frame("inline-flex w-fit rounded-md bg-zinc-900 text-sm font-medium text-white", text("buttonLabel", "span", "px-4 py-3"));
-    case "hero-image":
-    case "content-media-media":
-      if (content.imageUrl) style.backgroundImage ??= `url(${JSON.stringify(content.imageUrl)})`;
-      return frame("min-h-80 bg-cover bg-center " + (appearance === "hero-image"
-        ? "bg-linear-to-br from-[#8f765d] via-[#c7b08d] to-[#e6d9c5]"
-        : "bg-linear-to-bl from-[#d7c7af] via-[#887764] to-[#3f433d]"), content.alt && <span className="sr-only">{content.alt}</span>);
     case "section":
       return frame("rounded-xl bg-[#f5f2ec] px-8 py-12 text-center", <>{text("title", "p", "text-2xl font-semibold tracking-tight text-zinc-900")}{text("body", "p", "mx-auto mt-3 max-w-lg text-sm leading-6 text-zinc-600")}</>);
   }
@@ -1464,8 +1476,6 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
       return frame("rounded-xl bg-white", text("title", "h2", "px-8 py-10 text-4xl font-semibold tracking-[-0.04em] text-zinc-900 max-w-[52rem]"));
     case "text":
       return frame("rounded-xl bg-white", text("body", "p", "px-8 py-6 text-base leading-7 text-zinc-600 max-w-[46rem]"));
-    case "image":
-      return frame("overflow-hidden rounded-xl", <><div className={content.imageUrl ? "h-64 bg-cover bg-center" : "h-64 bg-linear-to-br from-[#d9d1c3] via-[#a8947c] to-[#4f584b]"} style={content.imageUrl ? { backgroundImage: `url(${JSON.stringify(content.imageUrl)})` } : undefined}>{!content.imageUrl && <div className="h-full w-full bg-[radial-gradient(circle_at_70%_35%,rgba(255,255,255,.55),transparent_26%),radial-gradient(circle_at_25%_80%,rgba(36,46,39,.45),transparent_36%)]" />}</div></>);
     case "button":
       return frame("inline-flex", text("buttonLabel", "span", buttonVariants({ className: "bg-zinc-900 px-5 text-sm text-white hover:bg-zinc-800" })));
     case "divider":
@@ -1576,59 +1586,32 @@ function PropertyRow({ label, value }: { label: string; value: string }) {
   return <div className="grid grid-cols-[64px_1fr] items-center gap-2 text-[10px]"><span className="text-zinc-500">{label}</span><Input aria-label={label} className="h-8 border-0 bg-zinc-50 px-2 text-[10px] shadow-none" readOnly value={value} /></div>;
 }
 
-function ImageUploadField({ onChange }: { onChange: (imageUrl: string) => void }) {
-  const handleUpload = (event: ChangeEvent<HTMLInputElement>) => {
-    const image = event.target.files?.[0];
-    if (!image?.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      if (typeof reader.result === "string") onChange(reader.result);
-    });
-    reader.readAsDataURL(image);
-  };
-
-  return <label className="flex h-8 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 px-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100">Upload image<input accept="image/*" className="sr-only" onChange={handleUpload} type="file" /></label>;
-}
-
-function BlockContentEditor({ actions, block }: { actions: EditorActions; block: EditorNode }) {
-  const { content } = block;
-  const appearance = block.metadata?.appearance;
-  const structural = isContainer(block.type) && (block.metadata?.preset || appearance === "split-content" || (typeof appearance === "string" && Object.hasOwn(presetContainerClasses, appearance)) || appearance === "preset-question" || appearance === "preset-grid");
-  const showTitle = !structural && ["section", "stack", "heading", "card", "quote", "stat", "form", "navigation", "footer"].includes(block.type);
-  const showBody = !structural && ["section", "box", "stack", "text", "card", "quote", "stat", "accordion", "form", "footer"].includes(block.type);
-  const showButtonLabel = ["button", "card", "form", "navigation"].includes(block.type);
-  const showImageUrl = block.type === "image";
-  const showPlaceholder = block.type === "input";
-
-  if (!showTitle && !showBody && !showButtonLabel && !showImageUrl && !showPlaceholder) return null;
-
-  return (
-    <div className="mt-4 space-y-3 border-t border-zinc-200 pt-4">
-      <p className="text-[10px] font-semibold tracking-[0.08em] text-zinc-500 uppercase">Content</p>
-      {showTitle && <label className="grid gap-1.5 text-[10px] font-medium text-zinc-600">Title<Input className="h-8 text-xs" onChange={(event) => actions.updateBlockContent(block.id, { title: event.target.value })} value={content.title ?? ""} /></label>}
-      {showBody && <label className="grid gap-1.5 text-[10px] font-medium text-zinc-600">Description<textarea className="min-h-18 w-full resize-y rounded-md border border-zinc-200 bg-white px-2.5 py-2 text-xs leading-5 outline-none placeholder:text-zinc-400 focus-visible:border-zinc-400 focus-visible:ring-2 focus-visible:ring-zinc-200" onChange={(event) => actions.updateBlockContent(block.id, { body: event.target.value })} value={content.body ?? ""} /></label>}
-      {showButtonLabel && <label className="grid gap-1.5 text-[10px] font-medium text-zinc-600">Button label<Input className="h-8 text-xs" onChange={(event) => actions.updateBlockContent(block.id, { buttonLabel: event.target.value })} value={content.buttonLabel ?? ""} /></label>}
-      {showPlaceholder && <label className="grid gap-1.5 text-[10px] font-medium text-zinc-600">Placeholder<Input className="h-8 text-xs" onChange={(event) => actions.updateBlockContent(block.id, { body: event.target.value })} value={content.body ?? ""} /></label>}
-      {showImageUrl && <div className="grid gap-2"><label className="grid gap-1.5 text-[10px] font-medium text-zinc-600">Image URL<Input className="h-8 text-xs" onChange={(event) => actions.updateBlockContent(block.id, { imageUrl: event.target.value })} placeholder="https://..." value={content.imageUrl ?? ""} /></label><ImageUploadField onChange={(imageUrl) => actions.updateBlockContent(block.id, { imageUrl })} /></div>}
-    </div>
-  );
-}
-
 function Inspector({ actions }: { actions: EditorActions }) {
-  const selection = actions.selectedNode ? nodeDetails(actions.selectedNode) : null;
-  const SelectionIcon = selection?.icon ?? MousePointer2;
+  const node = actions.selectedNode;
   return (
     <aside className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-white">
-      <div className="flex h-12 items-center border-b border-zinc-200 px-4 text-xs"><Tabs className="!h-full w-40 !gap-0" defaultValue="style"><TabsList className="!grid !h-full !w-full grid-cols-2 !gap-0 !p-0" variant="line"><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs data-active:text-zinc-950 after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="style">Style</TabsTrigger><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="settings">Settings</TabsTrigger></TabsList></Tabs><MoreHorizontal className="ml-auto size-4 text-zinc-500" /></div>
-      <ResizablePanelGroup className="min-h-0 flex-1" id="inspector-sections" orientation="vertical">
-        <ResizablePanel defaultSize="18" id="selection" minSize="120px"><ScrollArea className="h-full"><div className="border-b border-zinc-200 p-4"><div className="flex items-center gap-3"><div className="grid size-8 place-items-center rounded-md bg-orange-100 text-orange-600"><SelectionIcon className="size-4" /></div><div><p className="text-xs font-semibold">{selection?.label ?? "No layer selected"}</p><p className="text-[10px] text-zinc-500">{actions.selectedNode?.type}</p></div></div><Button className="mt-3 w-full justify-between border-violet-300 bg-violet-50 text-[10px] text-violet-700 hover:bg-violet-100" size="sm" variant="outline">✦ {selection?.label.toLowerCase().replace(" ", "-") ?? "No selection"} <ChevronDown className="size-3" /></Button><p className="mt-2 text-[9px] text-zinc-500">Inheriting 2 styles on Desktop</p>{actions.selectedNode && <BlockContentEditor actions={actions} block={actions.selectedNode} />}</div></ScrollArea></ResizablePanel>
-        <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
-        <ResizablePanel defaultSize="31" id="layout" minSize="210px"><ScrollArea className="h-full"><InspectorSection title="Layout"><div className="grid grid-cols-4 gap-1 rounded-md bg-zinc-50 p-1"><Button className="h-7 bg-white text-orange-600 shadow-sm hover:bg-white" size="sm" variant="ghost"><PanelTop className="size-3.5" /></Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost"><LayoutTemplate className="size-3.5" /></Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost"><Settings2 className="size-3.5" /></Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost"><MousePointer2 className="size-3.5" /></Button></div><PropertyRow label="Size" value="W  Fill     H  Auto" /><PropertyRow label="Position" value="Relative" /><div className="rounded-md bg-zinc-50 p-2 text-[9px] text-zinc-500"><div className="flex justify-between"><span>MARGIN</span><span>0</span></div><div className="my-1.5 flex items-center gap-2"><span>0</span><div className="flex flex-1 items-center justify-center border border-zinc-200 p-2"><span className="bg-orange-100 px-6 py-2 text-orange-600">PADDING&nbsp; 0</span></div><span>0</span></div><p className="text-center">0</p></div></InspectorSection></ScrollArea></ResizablePanel>
-        <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
-        <ResizablePanel defaultSize="35" id="typography" minSize="240px"><ScrollArea className="h-full"><InspectorSection title="Typography"><Button className="h-8 w-full justify-between bg-zinc-50 px-2 text-base font-medium hover:bg-zinc-100" variant="ghost">Inter <ChevronDown className="size-3 text-zinc-500" /></Button><PropertyRow label="Weight" value="Semibold" /><PropertyRow label="Size" value="76   px" /><div className="grid grid-cols-2 gap-2"><Input aria-label="Line height" className="h-8 border-0 bg-zinc-50 text-xs shadow-none" readOnly value="↕  98%" /><Input aria-label="Letter spacing" className="h-8 border-0 bg-zinc-50 text-xs shadow-none" readOnly value="↔  −1.6" /></div><div className="grid grid-cols-4 rounded-md bg-zinc-50 p-1"><Button className="h-7 bg-white text-orange-600" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button></div><PropertyRow label="Color" value="■  333B32   100%" /></InspectorSection></ScrollArea></ResizablePanel>
-        <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
-        <ResizablePanel defaultSize="16" id="appearance" minSize="120px"><ScrollArea className="h-full"><InspectorSection title="Appearance"><PropertyRow label="Opacity" value="100%" /><PropertyRow label="Radius" value="⌜  0" /></InspectorSection><Button className="h-10 w-full justify-between rounded-none px-4 text-xs font-semibold hover:bg-zinc-50" variant="ghost">Effects <Plus className="size-3.5 text-zinc-500" /></Button></ScrollArea></ResizablePanel>
-      </ResizablePanelGroup>
+      <Tabs className="min-h-0 flex-1 !gap-0" defaultValue="style">
+        <div className="flex h-12 shrink-0 items-center border-b border-zinc-200 px-4 text-xs"><TabsList className="!grid !h-full !w-40 grid-cols-2 !gap-0 !p-0" variant="line"><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs data-active:text-zinc-950 after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="style">Style</TabsTrigger><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="settings">Settings</TabsTrigger></TabsList><MoreHorizontal className="ml-auto size-4 text-zinc-500" /></div>
+        <TabsContent className="min-h-0" value="style">
+          <ResizablePanelGroup className="min-h-0 flex-1" id="inspector-sections" orientation="vertical">
+            <ResizablePanel defaultSize="38" id="layout" minSize="210px"><ScrollArea className="h-full"><InspectorSection title="Layout"><div className="grid grid-cols-4 gap-1 rounded-md bg-zinc-50 p-1"><Button className="h-7 bg-white text-orange-600 shadow-sm hover:bg-white" size="sm" variant="ghost"><PanelTop className="size-3.5" /></Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost"><LayoutTemplate className="size-3.5" /></Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost"><Settings2 className="size-3.5" /></Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost"><MousePointer2 className="size-3.5" /></Button></div><PropertyRow label="Size" value="W  Fill     H  Auto" /><PropertyRow label="Position" value="Relative" /><div className="rounded-md bg-zinc-50 p-2 text-[9px] text-zinc-500"><div className="flex justify-between"><span>MARGIN</span><span>0</span></div><div className="my-1.5 flex items-center gap-2"><span>0</span><div className="flex flex-1 items-center justify-center border border-zinc-200 p-2"><span className="bg-orange-100 px-6 py-2 text-orange-600">PADDING&nbsp; 0</span></div><span>0</span></div><p className="text-center">0</p></div></InspectorSection></ScrollArea></ResizablePanel>
+            <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
+            <ResizablePanel defaultSize="42" id="typography" minSize="240px"><ScrollArea className="h-full"><InspectorSection title="Typography"><Button className="h-8 w-full justify-between bg-zinc-50 px-2 text-base font-medium hover:bg-zinc-100" variant="ghost">Inter <ChevronDown className="size-3 text-zinc-500" /></Button><PropertyRow label="Weight" value="Semibold" /><PropertyRow label="Size" value="76   px" /><div className="grid grid-cols-2 gap-2"><Input aria-label="Line height" className="h-8 border-0 bg-zinc-50 text-xs shadow-none" readOnly value="↕  98%" /><Input aria-label="Letter spacing" className="h-8 border-0 bg-zinc-50 text-xs shadow-none" readOnly value="↔  −1.6" /></div><div className="grid grid-cols-4 rounded-md bg-zinc-50 p-1"><Button className="h-7 bg-white text-orange-600" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button></div><PropertyRow label="Color" value="■  333B32   100%" /></InspectorSection></ScrollArea></ResizablePanel>
+            <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
+            <ResizablePanel defaultSize="20" id="appearance" minSize="120px"><ScrollArea className="h-full"><InspectorSection title="Appearance"><PropertyRow label="Opacity" value="100%" /><PropertyRow label="Radius" value="⌜  0" /></InspectorSection><Button className="h-10 w-full justify-between rounded-none px-4 text-xs font-semibold hover:bg-zinc-50" variant="ghost">Effects <Plus className="size-3.5 text-zinc-500" /></Button></ScrollArea></ResizablePanel>
+          </ResizablePanelGroup>
+        </TabsContent>
+        <TabsContent className="min-h-0 overflow-auto" value="settings">
+          {node?.type === "input" && (
+            <InspectorSection title="Content">
+              <label className="grid gap-1.5 text-xs font-medium text-zinc-600">
+                Placeholder
+                <Input className="text-xs md:text-xs" onChange={(event) => actions.updateBlockContent(node.id, { body: event.target.value })} value={node.content.body ?? ""} />
+              </label>
+            </InspectorSection>
+          )}
+        </TabsContent>
+      </Tabs>
     </aside>
   );
 }
@@ -2376,6 +2359,23 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
         const currentPage = document.pages.find((candidate) => candidate.id === page.id);
         if (!currentPage || !Object.hasOwn(currentPage.nodes, nodeId)) return document;
         return applyDocumentOperation(document, { type: "node.updateContent", pageId: page.id, nodeId, content });
+      });
+    },
+    updateImage: (nodeId, breakpoint, { imageUrl, alt, objectFit }) => {
+      if (!page) return;
+      commit((document) => {
+        const currentPage = document.pages.find((candidate) => candidate.id === page.id);
+        const node = currentPage && Object.hasOwn(currentPage.nodes, nodeId) ? currentPage.nodes[nodeId] : null;
+        if (node?.type !== "image") return document;
+
+        const content: NodeContent = {};
+        if (imageUrl !== undefined && imageUrl !== node.content.imageUrl) content.imageUrl = imageUrl;
+        if (alt !== (node.content.alt ?? "")) content.alt = alt;
+        const withContent = Object.keys(content).length
+          ? applyDocumentOperation(document, { type: "node.updateContent", pageId: page.id, nodeId, content })
+          : document;
+        return objectFit === (resolveStyles(node, breakpoint).objectFit ?? "cover") ? withContent
+          : applyDocumentOperation(withContent, { type: "node.updateStyle", pageId: page.id, nodeId, breakpoint, styles: { objectFit } });
       });
     },
   };
