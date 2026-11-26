@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyDocumentOperation, proposeNodeMove, resolveStyles, selectionAfterDelete, validatePageTree, type PageDocument, type SiteDocument } from "./builder-document.ts";
+import { applyDocumentOperation, canInsertAt, insertionAtSelection, proposeNodeMove, resolveStyles, selectionAfterDelete, validatePageTree, type PageDocument, type SiteDocument } from "./builder-document.ts";
 import { buildSection, createBlock, createSection, sectionPresets } from "./builder-presets.ts";
 import { emptyDocument, loadEditorSave } from "./builder-storage.ts";
 
@@ -42,6 +42,33 @@ test("Hero and Content + media insert ordered, addressable subtrees atomically",
     assert.equal(children[0].content.body, id === "hero" ? "Interior architecture" : "Our approach");
     assert.ok(children.every((node) => node.parentId === contentId && Object.values(node.content).some(Boolean)));
   }
+});
+
+test("Quick insert uses sibling and container positions and keeps Sections at the root", () => {
+  const document = insertPreset("hero");
+  const [page] = document.pages;
+  const [sectionId] = page.rootIds;
+  const [contentId] = page.nodes[sectionId].childIds;
+  const [eyebrowId, headingId] = page.nodes[contentId].childIds;
+
+  const afterLeaf = insertionAtSelection(page, "text", page.nodes[eyebrowId]);
+  assert.deepEqual(afterLeaf, { pageId: page.id, parentId: contentId, index: 1, placement: "after" });
+  assert.deepEqual(insertionAtSelection(page, "text", page.nodes[contentId]), {
+    pageId: page.id, parentId: contentId, index: page.nodes[contentId].childIds.length, placement: "inside",
+  });
+  const rootEnd = { pageId: page.id, parentId: null, index: 1, placement: "after" };
+  assert.deepEqual(insertionAtSelection(page, "section", page.nodes[eyebrowId]), rootEnd);
+  assert.deepEqual(insertionAtSelection(page, "text", null), rootEnd);
+  assert.ok(canInsertAt(page, "text", afterLeaf));
+  assert.ok(!canInsertAt(page, "section", afterLeaf));
+  assert.ok(!canInsertAt(page, "text", { ...afterLeaf, parentId: eyebrowId }));
+  assert.ok(!canInsertAt(page, "text", { ...afterLeaf, pageId: "other-page" }));
+  assert.ok(!canInsertAt(page, "text", { ...afterLeaf, index: -1 }));
+  assert.ok(!canInsertAt(page, "text", { ...afterLeaf, index: page.nodes[contentId].childIds.length + 1 }));
+
+  const updated = applyDocumentOperation(document, { ...afterLeaf, type: "node.insert", node: createBlock("new-text", "text") });
+  validatePageTree(updated.pages[0]);
+  assert.deepEqual(updated.pages[0].nodes[contentId].childIds.slice(0, 3), [eyebrowId, "new-text", headingId]);
 });
 
 test("Moves update both parents and reject cycles and leaf destinations", () => {

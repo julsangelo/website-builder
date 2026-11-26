@@ -76,6 +76,12 @@ export type DocumentOperation =
 
 type MoveOperation = Extract<DocumentOperation, { type: "node.move" }>;
 export type MovePlacement = "before" | "after" | "inside";
+export type InsertionTarget = {
+  pageId: string;
+  parentId: string | null;
+  index: number;
+  placement: MovePlacement;
+};
 
 export function validatePageTree(page: PageDocument) {
   const visited = new Set<string>();
@@ -121,6 +127,25 @@ function moveError(page: PageDocument, node: EditorNode, parentId: string | null
 
 function siblingsAt(page: PageDocument, parentId: string | null) {
   return parentId === null ? page.rootIds : page.nodes[parentId].childIds;
+}
+
+export function canInsertAt(page: PageDocument, type: BlockType, target: InsertionTarget) {
+  return target.pageId === page.id
+    && !placementError(page, target.parentId, type)
+    && Number.isInteger(target.index)
+    && target.index >= 0
+    && target.index <= siblingsAt(page, target.parentId).length;
+}
+
+export function insertionAtSelection(page: PageDocument, type: BlockType, selection: EditorNode | null): InsertionTarget {
+  if (!selection) return { pageId: page.id, parentId: null, index: page.rootIds.length, placement: "after" };
+  if (type !== "section" && isContainer(selection.type)) {
+    return { pageId: page.id, parentId: selection.id, index: selection.childIds.length, placement: "inside" };
+  }
+  // A Section must follow the selected root when the selection is nested.
+  while (type === "section" && selection.parentId !== null) selection = page.nodes[selection.parentId];
+  const { parentId, id } = selection;
+  return { pageId: page.id, parentId, index: siblingsAt(page, parentId).indexOf(id) + 1, placement: "after" };
 }
 
 export function proposeNodeMove(page: PageDocument, nodeId: string, targetId: string, placement: MovePlacement):

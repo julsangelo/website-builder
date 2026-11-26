@@ -8,6 +8,7 @@ import {
   type MouseEvent,
   type PointerEvent,
   type ReactNode,
+  type RefObject,
   useCallback,
   useEffect,
   useRef,
@@ -100,6 +101,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog } from "@base-ui/react/dialog";
 import {
   applyDocumentOperation,
+  canInsertAt,
+  insertionAtSelection,
   isContainer,
   proposeNodeMove,
   resolveStyles,
@@ -108,14 +111,16 @@ import {
   type Breakpoint,
   type DocumentOperation,
   type EditorNode,
+  type InsertionTarget,
   type MovePlacement,
   type NodeContent,
   type PageDocument,
   type SiteDocument,
 } from "@/lib/builder-document";
-import { buildSection, createBlock, sectionPresets, type SectionPreset } from "@/lib/builder-presets";
-import { editorStorageKey, emptyDocument, isBlockType, loadEditorSave, pageSlug } from "@/lib/builder-storage";
+import { buildSection, createBlock, sectionPresets } from "@/lib/builder-presets";
+import { editorStorageKey, emptyDocument, loadEditorSave, pageSlug } from "@/lib/builder-storage";
 import { useLayerDrag } from "./layer-drag";
+import { insertionType, startQuickInsertDrag, useQuickInsertDrop, type QuickInsertDrag, type QuickInsertItem } from "./quick-insert-drag";
 
 // PROTOTYPE: Three Figma-derived website editor shells, switchable via ?variant=a|b|c.
 
@@ -280,8 +285,8 @@ type EditorActions = {
   selectedNode: EditorNode | null;
   selection: LayerSelection | null;
   choose: (node: EditorNode, source?: "layers") => void;
-  addBlock: (block: BlockType, parentId?: string | null) => void;
-  addSection: (section: SectionPreset) => void;
+  insertItem: (item: QuickInsertItem, target?: InsertionTarget) => void;
+  insertDrag: RefObject<QuickInsertDrag | null>;
   isLayerCollapsed: (layerId: string) => boolean;
   expandLayer: (layerId: string) => void;
   moveLayer: (sourceId: string, targetId: string, placement: MovePlacement) => void;
@@ -378,17 +383,14 @@ function ProjectBar({ canRedo, canUndo, onRedo, onUndo, saveStatus }: { canRedo:
   );
 }
 
-function QuickInsert({ actions, rail = false }: { actions: EditorActions; rail?: boolean }) {
+function QuickInsert({ actions, rail = false, scrolled = false }: { actions: EditorActions; rail?: boolean; scrolled?: boolean }) {
   const [library, setLibrary] = useState<"blocks" | "sections">("blocks");
+  function beginDrag(event: DragEvent, item: QuickInsertItem) {
+    if (actions.page) startQuickInsertDrag(event, actions.insertDrag, { item, pageId: actions.page.id });
+  }
 
-  return (
-    <section className={rail ? "flex items-center gap-2" : "border-t border-zinc-200 p-4"}>
-      {!rail && (
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-xs font-semibold">Quick insert</p>
-          <Settings2 className="size-3.5 text-zinc-500" />
-        </div>
-      )}
+  const items = (
+    <div className={rail ? "flex items-center gap-2" : "p-4"}>
       {!rail && (
         <div className="relative mb-3">
           <Search className="absolute top-1/2 left-2.5 size-3 -translate-y-1/2 text-zinc-400" />
@@ -408,6 +410,7 @@ function QuickInsert({ actions, rail = false }: { actions: EditorActions; rail?:
         <div className={rail ? "flex gap-2" : "grid grid-cols-2 gap-2"}>
           {quickBlocks.map((block) => {
             const Icon = block.icon;
+            const item: QuickInsertItem = { source: "block", type: block.id };
             return (
               <Button
                 className={
@@ -417,8 +420,8 @@ function QuickInsert({ actions, rail = false }: { actions: EditorActions; rail?:
                 disabled={!actions.hasPage}
                 draggable={actions.hasPage}
                 key={block.id}
-                onClick={() => actions.addBlock(block.id)}
-                onDragStart={(event) => event.dataTransfer.setData("text/plain", block.id)}
+                onClick={() => actions.insertItem(item)}
+                onDragStart={(event) => beginDrag(event, item)}
                 variant="outline"
               >
                 <span
@@ -439,12 +442,15 @@ function QuickInsert({ actions, rail = false }: { actions: EditorActions; rail?:
         <div className="grid gap-1.5">
           {sectionPresets.map((section) => {
             const Icon = sectionPresetIcons[section.id] ?? LayoutTemplate;
+            const item: QuickInsertItem = { source: "preset", preset: section };
             return (
               <Button
-                className="h-auto justify-start border-zinc-200 bg-white px-2.5 py-2 text-left font-normal text-zinc-900 shadow-none hover:border-orange-300 hover:bg-orange-50 disabled:cursor-not-allowed"
+                className="h-auto cursor-grab justify-start border-zinc-200 bg-white px-2.5 py-2 text-left font-normal text-zinc-900 shadow-none hover:border-orange-300 hover:bg-orange-50 active:cursor-grabbing disabled:cursor-not-allowed"
                 disabled={!actions.hasPage}
+                draggable={actions.hasPage}
                 key={section.id}
-                onClick={() => actions.addSection(section)}
+                onClick={() => actions.insertItem(item)}
+                onDragStart={(event) => beginDrag(event, item)}
                 variant="outline"
               >
                 <Icon className="size-4 shrink-0 text-zinc-500" />
@@ -459,9 +465,24 @@ function QuickInsert({ actions, rail = false }: { actions: EditorActions; rail?:
       )}
       {!rail && (
         <p className="mt-3 flex items-center gap-1.5 text-[10px] text-zinc-500">
-          {actions.hasPage ? <><GripVertical className="size-3" /> Drag a block onto your page</> : "Add a page before inserting blocks or sections."}
+          {actions.hasPage ? <><GripVertical className="size-3" /> Drag {library === "blocks" ? "a block" : "a section"} onto your page</> : "Add a page before inserting blocks or sections."}
         </p>
       )}
+    </div>
+  );
+
+  return rail ? items : (
+    <section className="min-h-full">
+      <div
+        className={
+          "sticky top-0 z-10 flex h-10 items-center justify-between border-b border-zinc-100 bg-white px-4 text-xs font-semibold transition-shadow " +
+          (scrolled ? "shadow-[0_4px_8px_rgba(24,24,27,0.12)]" : "shadow-none")
+        }
+      >
+        <p>Quick insert</p>
+        <Settings2 className="size-3.5 text-zinc-500" />
+      </div>
+      {items}
     </section>
   );
 }
@@ -987,6 +1008,7 @@ function Navigator({
   selectedPageId: string | null;
 }) {
   const [pagesScrolled, setPagesScrolled] = useState(false);
+  const [quickInsertScrolled, setQuickInsertScrolled] = useState(false);
 
   return (
     <aside className="flex h-full w-full min-w-0 flex-col bg-white">
@@ -1106,8 +1128,10 @@ function Navigator({
         </ResizablePanel>
         <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
         <ResizablePanel defaultSize="35" id="quick-insert" minSize="190px">
-          <ScrollArea className="h-full">
-            <QuickInsert actions={actions} />
+          <ScrollArea className="h-full" viewportProps={{
+            onScroll: (event) => setQuickInsertScrolled(event.currentTarget.scrollTop > 0),
+          }}>
+            <QuickInsert actions={actions} scrolled={quickInsertScrolled} />
           </ScrollArea>
         </ResizablePanel>
       </ResizablePanelGroup>
@@ -1296,21 +1320,9 @@ function PreviewSelectable({
         event.stopPropagation();
         actions.choose(node);
       }}
-      onDragOver={(event) => {
-        drag.onDragOver?.(event);
-        if (isContainer(node.type) && event.dataTransfer.types.includes("text/plain")) event.preventDefault();
-      }}
+      onDragOver={drag.onDragOver}
       onDragStart={drag.onDragStart}
-      onDrop={(event) => {
-        drag.onDrop?.(event);
-        if (event.defaultPrevented || !isContainer(node.type)) return;
-        const block = event.dataTransfer.getData("text/plain");
-        if (isBlockType(block) && block !== "section") {
-          event.preventDefault();
-          event.stopPropagation();
-          actions.addBlock(block, node.id);
-        }
-      }}
+      onDrop={drag.onDrop}
       onKeyDown={(event) => {
         if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
@@ -1458,28 +1470,17 @@ function PreviewNode({ actions, node, breakpoint }: { actions: EditorActions; no
 }
 
 function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }: { actions: EditorActions; artboardHeight: number; artboardRef: React.RefObject<HTMLElement | null>; isResizing: boolean; viewport: CanvasViewport }) {
-  const [dragging, setDragging] = useState(false);
   const compactPreview = viewport.width < 768;
   const narrowPreview = viewport.width < 510;
   const browserHeaderHeight = compactPreview ? 48 : 64;
   const page = actions.page;
+  const { indicator, handlers } = useQuickInsertDrop(page, actions.insertDrag, actions.insertItem);
   const hasVisibleContent = page?.rootIds.some((id) => page.nodes[id].visible);
   const breakpoint: Breakpoint = narrowPreview ? "mobile" : viewport.width <= 768 ? "tablet" : "base";
-
-  function handleDrop(event: DragEvent<HTMLElement>) {
-    event.preventDefault();
-    setDragging(false);
-    const block = event.dataTransfer.getData("text/plain");
-    if (isBlockType(block)) actions.addBlock(block, null);
-  }
 
   return (
     <article
       className={"relative min-h-[640px] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_12px_30px_rgba(24,24,27,0.08)] transition-[width] ease-out motion-reduce:transition-none " + (isResizing ? "duration-0" : "duration-300")}
-      onDragEnter={() => setDragging(true)}
-      onDragLeave={() => setDragging(false)}
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={handleDrop}
       ref={artboardRef}
       style={{ minHeight: artboardHeight, width: viewport.width }}
     >
@@ -1492,7 +1493,11 @@ function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }
           <div className={(compactPreview ? "h-7 w-[48%] gap-1.5 text-[9px] " : "h-8 w-[42%] gap-2 text-xs ") + "absolute top-1/2 left-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-400 shadow-sm"}><LockKeyhole className={compactPreview ? "size-3" : "size-3.5"} /> yourwebsite.com</div>
         )}
       </header>
-      <section className={hasVisibleContent ? "bg-white text-center" : "grid place-items-center bg-white text-center"} style={{ minHeight: artboardHeight - browserHeaderHeight }}>
+      <section
+        className={"relative bg-white text-center " + (hasVisibleContent ? "" : "grid place-items-center")}
+        style={{ minHeight: artboardHeight - browserHeaderHeight }}
+        {...handlers}
+      >
         {hasVisibleContent ? (
           <div className="w-full text-left">
             {page?.rootIds.map((id) => (
@@ -1514,8 +1519,13 @@ function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }
             </EmptyHeader>
           </Empty>
         )}
+        {indicator && (
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-20" data-insertion-indicator={indicator.placement}>
+            {indicator.container && <div className="absolute border-2 border-orange-400 bg-orange-400/5" style={indicator.container} />}
+            <div className="absolute rounded-full bg-orange-500" style={indicator.line} />
+          </div>
+        )}
       </section>
-      {dragging && <div className="absolute inset-x-3 top-14 bottom-3 grid place-items-center border-2 border-dashed border-orange-500 bg-orange-50/90 text-sm font-medium text-orange-700">Drop to add a block</div>}
     </article>
   );
 }
@@ -1845,7 +1855,7 @@ function Canvas({ actions, compact, onViewportChange, page, variant, viewport }:
               <div className="mb-2 flex shrink-0 justify-between text-[10px] text-zinc-400"><span>{page.name} · {viewport.label}</span><span>{viewport.width} px</span></div>
               <div className={"relative transition-[width,height] ease-out motion-reduce:transition-none " + widthTransition} style={{ height: scaledHeight, width: scaledWidth }}>
                 <div className="absolute top-0 left-0 origin-top-left transition-transform duration-300 ease-out will-change-transform motion-reduce:transition-none" style={{ transform: `scale(${zoomScale})`, width: viewport.width }}>
-                  <Artboard actions={actions} artboardHeight={artboardHeight} artboardRef={artboardRef} isResizing={isResizingCanvas} viewport={viewport} />
+                  <Artboard actions={actions} artboardHeight={artboardHeight} artboardRef={artboardRef} isResizing={isResizingCanvas} key={actions.page?.id} viewport={viewport} />
                 </div>
                 <div
                   aria-label="Resize canvas width"
@@ -2052,6 +2062,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
   const current: VariantKey = showVariantSwitcher && (requested === "b" || requested === "c") ? requested : "a";
   const [compact, setCompact] = useState(false);
   const [viewport, setViewport] = useState<CanvasViewport>(canvasViewportPresets.desktop);
+  const insertDrag = useRef<QuickInsertDrag | null>(null);
   const [timeline, setTimeline] = useState<DocumentHistory>({ document: emptyDocument, past: [], future: [] });
   const { document, past, future } = timeline;
   const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -2127,20 +2138,22 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
     commit((document) => applyDocumentOperation(document, operation));
   }
 
-  function insert(node: EditorNode, parentId: string | null, descendants?: Record<string, EditorNode>) {
+  function insertItem(item: QuickInsertItem, dropTarget?: InsertionTarget) {
     if (!page) return;
-    const index = parentId === null ? page.rootIds.length : page.nodes[parentId].childIds.length;
-    edit({ type: "node.insert", pageId: page.id, node, parentId, index, descendants });
+    const type = insertionType(item);
+    const target = dropTarget ?? insertionAtSelection(page, type, selectedNode);
+    if (!canInsertAt(page, type, target)) return;
+    const { pageId, parentId, index } = target;
+    const { node, descendants } = item.source === "preset"
+      ? buildSection(item.preset, () => crypto.randomUUID())
+      : { node: createBlock(crypto.randomUUID(), item.type), descendants: undefined };
+    commit((document) => {
+      const currentPage = document.pages.find((candidate) => candidate.id === pageId);
+      return currentPage && canInsertAt(currentPage, type, target)
+        ? applyDocumentOperation(document, { type: "node.insert", pageId, node, parentId, index, descendants })
+        : document;
+    });
     choose({ ...node, parentId });
-  }
-
-  function addBlock(type: BlockType, parentId: string | null = null) {
-    insert(createBlock(crypto.randomUUID(), type), parentId);
-  }
-
-  function addSection(preset: SectionPreset) {
-    const { node, descendants } = buildSection(preset, () => crypto.randomUUID());
-    insert(node, null, descendants);
   }
 
   function moveBeforeSibling(sourceId: string, targetId: string) {
@@ -2312,7 +2325,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
   }, [changeVariant, current, showVariantSwitcher]);
 
   const actions: EditorActions = {
-    page, hasPage: page !== null, selectedNode, choose, addBlock, addSection, moveBeforeSibling, moveLayer, toggleLayerCollapse,
+    page, hasPage: page !== null, selectedNode, choose, insertItem, insertDrag, moveBeforeSibling, moveLayer, toggleLayerCollapse,
     selection: selectedNode ? layerSelection : null,
     expandLayer: (id) => { if (page) expandLayers(page.id, [id]); },
     isLayerCollapsed: (id) => page !== null && (collapsedLayers[page.id] ?? []).includes(id),
