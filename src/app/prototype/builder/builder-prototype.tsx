@@ -267,11 +267,14 @@ function nodeDetails(node: EditorNode) {
   };
 }
 
+type LayerSelection = { pageId: string; id: string; source?: "layers" };
+
 type EditorActions = {
   page: PageDocument | null;
   hasPage: boolean;
   selectedNode: EditorNode | null;
-  choose: (nodeId: string) => void;
+  selection: LayerSelection | null;
+  choose: (node: EditorNode, source?: "layers") => void;
   addBlock: (block: BlockType, parentId?: string | null) => void;
   addSection: (section: SectionPreset) => void;
   isLayerCollapsed: (layerId: string) => boolean;
@@ -628,10 +631,8 @@ function LayerDeleteDialog({
 }
 
 function LayerTreeItem({
-  active,
   collapsed = false,
   collapsible = false,
-  depth = 0,
   inheritedHidden = false,
   icon: Icon,
   label,
@@ -643,12 +644,11 @@ function LayerTreeItem({
   onSelect,
   onToggleCollapse,
   onToggleVisibility,
+  selection,
   visible,
 }: {
-  active: boolean;
   collapsed?: boolean;
   collapsible?: boolean;
-  depth?: number;
   inheritedHidden?: boolean;
   icon: LucideIcon;
   label: string;
@@ -660,13 +660,15 @@ function LayerTreeItem({
   onSelect: () => void;
   onToggleCollapse?: () => void;
   onToggleVisibility: () => void;
+  selection: LayerSelection | null;
   visible: boolean;
 }) {
+  const active = selection !== null;
   const visuallyHidden = inheritedHidden || !visible;
   const rowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (active) rowRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [active]);
+    if (selection) rowRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [selection]);
 
   return (
     <div
@@ -680,10 +682,11 @@ function LayerTreeItem({
       onDragStart={onDragStart}
       onDrop={onDrop}
       ref={rowRef}
-      style={{ paddingLeft: 8 + depth * 14 }}
+      style={{ paddingLeft: 8 }}
     >
       {collapsible ? (
         <button
+          aria-expanded={!collapsed}
           aria-label={`${collapsed ? "Expand" : "Collapse"} ${label}`}
           className={"grid size-5 shrink-0 place-items-center rounded bg-transparent " + (active ? "text-orange-600 group-hover:text-zinc-950 hover:bg-orange-200 hover:text-zinc-950" : "text-zinc-500 hover:bg-zinc-200 hover:text-zinc-950")}
           onClick={(event) => {
@@ -697,6 +700,7 @@ function LayerTreeItem({
       ) : null}
       <Button
         aria-current={active ? "true" : undefined}
+        aria-description={inheritedHidden ? "Hidden by a parent layer" : undefined}
         className={
           "h-full min-w-0 flex-1 justify-start gap-2 rounded-md px-1 text-left text-xs font-normal hover:bg-transparent " +
           (active ? "font-medium text-orange-600 group-hover:text-zinc-950 hover:text-zinc-950" : "text-zinc-700 hover:text-zinc-700")
@@ -752,7 +756,6 @@ function Layers({ actions, ids, inheritedHidden = false }: { actions: EditorActi
         return (
           <div key={id}>
             <LayerTreeItem
-              active={actions.selectedNode?.id === id}
               collapsed={collapsed}
               collapsible={node.childIds.length > 0}
               icon={icon}
@@ -760,9 +763,10 @@ function Layers({ actions, ids, inheritedHidden = false }: { actions: EditorActi
               label={label}
               nodeId={id}
               onDelete={() => actions.requestLayerDelete(node)}
-              onSelect={() => actions.choose(id)}
+              onSelect={() => actions.choose(node, "layers")}
               onToggleCollapse={() => actions.toggleLayerCollapse(id)}
               onToggleVisibility={() => actions.toggleLayerVisibility(node)}
+              selection={actions.selection?.id === id ? actions.selection : null}
               visible={node.visible}
               {...siblingDragProps(actions, node)}
             />
@@ -916,6 +920,7 @@ function Navigator({
             className="h-full"
             viewportProps={{
               onScroll: (event) => setLayersScrolled(event.currentTarget.scrollTop > 0),
+              style: { scrollPaddingTop: "2.5rem" },
             }}
           >
             <section className="min-h-full">
@@ -1140,7 +1145,7 @@ function PreviewSelectable({
       draggable={Boolean(drag.onDragStart)}
       onClick={(event) => {
         event.stopPropagation();
-        actions.choose(node.id);
+        actions.choose(node);
       }}
       onDragOver={(event) => {
         drag.onDragOver?.(event);
@@ -1160,7 +1165,7 @@ function PreviewSelectable({
       onKeyDown={(event) => {
         if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
-          actions.choose(node.id);
+          actions.choose(node);
         }
       }}
       role="button"
@@ -1450,6 +1455,35 @@ function Canvas({ actions, compact, onViewportChange, page, variant, viewport }:
   const scaledWidth = viewport.width * zoomScale;
   const scaledHeight = artboardHeight * zoomScale;
   const widthTransition = isResizingCanvas ? "duration-0" : "duration-300";
+  const previewReveal = actions.selection?.source === "layers" ? actions.selection : null;
+
+  useEffect(() => {
+    const viewport = scrollViewportRef.current;
+    const artboard = artboardRef.current;
+    if (!previewReveal || !viewport || !artboard) return;
+
+    const target = artboard.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(previewReveal.id)}"]`);
+    if (!target) return;
+
+    // A selected FAQ answer may sit inside a closed disclosure in the preview.
+    for (let parent = target.parentElement; parent && parent !== artboard; parent = parent.parentElement) {
+      if (parent instanceof HTMLDetailsElement && !parent.querySelector(":scope > summary")?.contains(target)) {
+        parent.open = true;
+      }
+    }
+    if (!target.checkVisibility()) return;
+
+    const bounds = target.getBoundingClientRect();
+    const viewportBounds = viewport.getBoundingClientRect();
+    const nearest = (start: number, end: number, length: number) =>
+      start < 0 && end <= length ? Math.max(start, end - length)
+        : end > length && start >= 0 ? Math.min(start, end - length)
+        : 0;
+    viewport.scrollBy({
+      left: nearest(bounds.left - viewportBounds.left, bounds.right - viewportBounds.left, viewport.clientWidth),
+      top: nearest(bounds.top - viewportBounds.top, bounds.bottom - viewportBounds.top, viewport.clientHeight),
+    });
+  }, [previewReveal]);
 
   useEffect(() => {
     const artboard = artboardRef.current;
@@ -1869,7 +1903,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
   const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "error">("loading");
   const [saveResult, setSaveResult] = useState<{ document: SiteDocument; error: boolean } | null>(null);
   const [activePageId, setActivePageId] = useState<string | null>(null);
-  const [layerSelection, setLayerSelection] = useState<{ pageId: string; id: string } | null>(null);
+  const [layerSelection, setLayerSelection] = useState<LayerSelection | null>(null);
   const [collapsedLayers, setCollapsedLayers] = useState<Record<string, string[]>>({});
   const [pageDialog, setPageDialog] = useState<PageDialogState>(null);
   const [layerDeleteDialog, setLayerDeleteDialog] = useState<LayerDeleteDialogState>(null);
@@ -1920,19 +1954,15 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
     });
   }, []);
 
-  function selectNode(id: string) {
-    if (page) setLayerSelection({ pageId: page.id, id });
-  }
-
-  function choose(id: string) {
+  function choose(node: EditorNode, source?: "layers") {
     if (!page) return;
-    selectNode(id);
-    const parentIds = ancestorNodes(page, page.nodes[id]).slice(0, -1).map((ancestor) => ancestor.id);
-    if (parentIds.length) {
-      setCollapsedLayers((current) => ({
-        ...current, [page.id]: (current[page.id] ?? []).filter((id) => !parentIds.includes(id)),
-      }));
-    }
+    setLayerSelection({ pageId: page.id, id: node.id, source });
+    const parentIds = new Set(ancestorNodes(page, node).slice(0, -1).map((ancestor) => ancestor.id));
+    setCollapsedLayers((current) => {
+      const collapsed = current[page.id];
+      if (!collapsed?.some((id) => parentIds.has(id))) return current;
+      return { ...current, [page.id]: collapsed.filter((id) => !parentIds.has(id)) };
+    });
   }
 
   function edit(operation: DocumentOperation) {
@@ -1943,10 +1973,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
     if (!page) return;
     const index = parentId === null ? page.rootIds.length : page.nodes[parentId].childIds.length;
     edit({ type: "node.insert", pageId: page.id, node, parentId, index, descendants });
-    setCollapsedLayers((current) => ({
-      ...current, [page.id]: (current[page.id] ?? []).filter((id) => id !== parentId),
-    }));
-    selectNode(node.id);
+    choose({ ...node, parentId });
   }
 
   function addBlock(type: BlockType, parentId: string | null = null) {
@@ -1969,7 +1996,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
     const index = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
     if (index === sourceIndex) return;
     edit({ type: "node.move", pageId: page.id, nodeId: sourceId, parentId: target.parentId, index });
-    choose(sourceId);
+    choose(source);
   }
 
   function confirmLayerDelete() {
@@ -1981,7 +2008,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
         const index = siblings.indexOf(node.id);
         const fallback = siblings[index + 1] ?? siblings[index - 1] ?? node.parentId;
         if (fallback === null) setLayerSelection(null);
-        else choose(fallback);
+        else choose(page.nodes[fallback]);
       }
       edit({ type: "node.delete", pageId: page.id, nodeId: node.id });
     }
@@ -2111,6 +2138,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
 
   const actions: EditorActions = {
     page, hasPage: page !== null, selectedNode, choose, addBlock, addSection, moveBeforeSibling, toggleLayerCollapse,
+    selection: selectedNode ? layerSelection : null,
     isLayerCollapsed: (id) => page !== null && (collapsedLayers[page.id] ?? []).includes(id),
     requestLayerDelete: (node) => setLayerDeleteDialog({
       layerId: node.id, label: nodeDetails(node).label, hasChildren: node.childIds.length > 0,

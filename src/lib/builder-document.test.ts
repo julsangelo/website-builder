@@ -74,6 +74,31 @@ test("Moves update both parents and reject cycles and leaf destinations", () => 
   }), /page root/);
 });
 
+test("Hiding a container and reloading preserves each descendant's own visibility", () => {
+  const document = insertPreset("content-media");
+  const [page] = document.pages;
+  const [sectionId] = page.rootIds;
+  const [contentId] = page.nodes[sectionId].childIds;
+  const [eyebrowId, headingId] = page.nodes[contentId].childIds;
+  const hideHeading = applyDocumentOperation(document, {
+    type: "node.setVisibility", pageId: page.id, nodeId: headingId, visible: false,
+  });
+  const hideContent = applyDocumentOperation(hideHeading, {
+    type: "node.setVisibility", pageId: page.id, nodeId: contentId, visible: false,
+  });
+  const { document: reloaded } = loadEditorSave(JSON.parse(JSON.stringify({ document: hideContent, selectedPageId: page.id })));
+  const [savedPage] = reloaded.pages;
+  assert.equal(savedPage.nodes[contentId].visible, false);
+  assert.deepEqual(savedPage.nodes[contentId].childIds, page.nodes[contentId].childIds);
+  assert.equal(savedPage.nodes[eyebrowId].visible, true);
+  assert.equal(savedPage.nodes[headingId].visible, false);
+
+  const showContent = applyDocumentOperation(reloaded, {
+    type: "node.setVisibility", pageId: page.id, nodeId: contentId, visible: true,
+  });
+  assert.deepEqual(showContent.pages, hideHeading.pages);
+});
+
 test("Deleting a container removes its subtree in a single immutable operation", () => {
   const document = insertPreset("content-media");
   const [page] = document.pages;
