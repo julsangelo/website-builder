@@ -1,22 +1,23 @@
-import { type FocusEvent, type KeyboardEvent, type MouseEvent, useCallback, useRef, useState } from "react";
+import { type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, useCallback, useRef, useState } from "react";
 import { Popover } from "@base-ui/react/popover";
 import { Link2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { NodeContent } from "@/lib/builder-document";
+import type { HeadingLevel, NodeContent } from "@/lib/builder-document";
 
 type TextField = "title" | "body" | "buttonLabel";
 type TextInput = HTMLInputElement | HTMLTextAreaElement;
 
 export function PreviewText({
-  as: Element = "span", className = "", field, label, multiline = true, value = "", onCommit,
+  as: Element = "span", className = "", field, label, multiline = true, style, value = "", onCommit,
 }: {
-  as?: "h1" | "h2" | "p" | "span";
+  as?: HeadingLevel | "p" | "span";
   className?: string;
   field: TextField;
   label: string;
   multiline?: boolean;
+  style?: CSSProperties;
   value?: string;
   onCommit: (content: NodeContent) => void;
 }) {
@@ -71,15 +72,16 @@ export function PreviewText({
     onKeyDown: handleKeyDown,
     ref: focusInput,
   };
-  const inputClass = "field-sizing-content min-w-[1ch] max-w-full cursor-text bg-transparent px-0 text-inherit outline-none [font:inherit]";
+  const inputClass = "field-sizing-content min-w-[1ch] max-w-full cursor-text bg-transparent px-0 text-inherit outline-none [font:inherit] [letter-spacing:inherit] [text-align:inherit] [text-transform:inherit]";
 
   return (
     <Element
       className={`${multiline ? "whitespace-pre-wrap wrap-break-word " : ""}${className}${value || session ? "" : " min-h-[1lh] min-w-[1ch]"}`}
       onDoubleClick={start}
+      style={style}
     >
       {session ? multiline
-        ? <textarea {...inputProps} className={`${inputClass} block w-full resize-none`} rows={1} />
+        ? <textarea {...inputProps} className={`${inputClass} block w-full resize-none [white-space:inherit]`} rows={1} />
         : <input {...inputProps} className={inputClass} type="text" />
         : value}
     </Element>

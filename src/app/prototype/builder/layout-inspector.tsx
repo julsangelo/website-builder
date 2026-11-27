@@ -1,10 +1,9 @@
-import { useId, useState, type ReactNode } from "react";
-import { ChevronDown, RotateCcw } from "lucide-react";
+import { useId, type ReactNode } from "react";
+import { RotateCcw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { isContainer, resolveStyles, type Breakpoint, type EditorNode, type StyleValues } from "@/lib/builder-document";
+import { CssValueInput, StyleInspectorSection } from "./style-inspector-controls";
 
 const displayOptions = ["block", "flex", "grid", "none"];
 const justifyOptions = ["normal", "start", "center", "end", "space-between", "space-around", "space-evenly"];
@@ -29,53 +28,7 @@ type LayoutInspectorProps = {
   onReset: (property: LayoutProperty) => void;
 };
 
-function CssValueInput({ id, property, value: resolved, hint, onChange }: {
-  id: string;
-  property: CssValueProperty;
-  value?: string | number;
-  hint: string;
-  onChange: (value: string) => void;
-}) {
-  const value = typeof resolved === "number" && property !== "zIndex" ? `${resolved}px` : String(resolved ?? "");
-  const cssProperty = property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-  const [draft, setDraft] = useState<{ source: string; text: string; invalid: boolean } | null>(null);
-  const activeDraft = draft?.source === value ? draft : null;
-  const errorId = `${id}-error`;
-  return (
-    <div className="min-w-0">
-      <Input
-        aria-describedby={activeDraft?.invalid ? errorId : undefined}
-        aria-invalid={activeDraft?.invalid || undefined}
-        className="bg-zinc-50 text-xs md:text-xs"
-        id={id}
-        onBlur={() => setDraft(null)}
-        onChange={(event) => {
-          const text = event.target.value;
-          const candidate = text.trim();
-          const valid = !/[;{}\\]/.test(candidate) && CSS.supports(cssProperty, candidate);
-          setDraft({ source: valid ? candidate : value, text, invalid: !valid });
-          if (valid && candidate !== value) onChange(candidate);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !activeDraft?.invalid) event.currentTarget.blur();
-          if (event.key === "Escape") setDraft(null);
-        }}
-        placeholder="Default"
-        spellCheck={false}
-        value={activeDraft?.text ?? value}
-      />
-      {activeDraft?.invalid && (
-        <p className="mt-1 text-xs text-destructive" id={errorId}>
-          {hint}
-        </p>
-      )}
-    </div>
-  );
-}
-
 export function LayoutInspector({ breakpoint, node, onChange, onReset }: LayoutInspectorProps) {
-  const [scrolled, setScrolled] = useState(false);
-  const [expanded, setExpanded] = useState(true);
   const id = useId();
   const style = resolveStyles(node, breakpoint);
   const display = style.display ?? "block";
@@ -127,6 +80,7 @@ export function LayoutInspector({ breakpoint, node, onChange, onReset }: LayoutI
         hint={hint}
         id={fieldId}
         onChange={(value) => onChange({ [property]: value })}
+        pixelUnits={property !== "zIndex"}
         property={property}
         value={style[property] ?? fallback}
       />
@@ -134,59 +88,36 @@ export function LayoutInspector({ breakpoint, node, onChange, onReset }: LayoutI
   }
 
   return (
-    <ScrollArea
-      className="h-full"
-      viewportProps={{
-        onScroll: (event) => setScrolled(event.currentTarget.scrollTop > 0),
-        style: { scrollPaddingTop: "2.5rem" },
-      }}
-    >
-      <section className="min-h-full">
-        <Button
-          aria-controls={id}
-          aria-expanded={expanded}
-          className={
-            "sticky top-0 z-10 h-10 w-full justify-between rounded-none border-b border-zinc-100 bg-white px-4 text-xs font-semibold text-zinc-950 transition-shadow hover:bg-white " +
-            (scrolled ? "shadow-[0_4px_8px_rgba(24,24,27,0.12)]" : "shadow-none")
-          }
-          onClick={() => setExpanded(!expanded)}
-          variant="ghost"
-        >
-          Layout
-          <ChevronDown aria-hidden="true" className={`size-3.5 text-zinc-500 ${expanded ? "" : "-rotate-90"}`} />
-        </Button>
-        <div className="space-y-2 p-4" hidden={!expanded} id={id}>
-          {container && select("display", "Display", display, disclosure ? ["block", "none"] : displayOptions)}
-          {container && !disclosure && flex && (
-            <>
-              {select("flexDirection", "Direction", style.flexDirection ?? "row", ["row", "column"])}
-              {select("flexWrap", "Wrap", style.flexWrap ?? "nowrap", ["nowrap", "wrap"])}
-            </>
-          )}
-          {container && !disclosure && (flex || grid) && (
-            <>
-              {select("alignItems", "Align items", style.alignItems ?? "normal", ["normal", "start", "center", "end", "stretch", "baseline"])}
-              {select("justifyContent", "Justify content", style.justifyContent ?? "normal", grid ? [...justifyOptions, "stretch"] : justifyOptions)}
-              {grid && cssValue("gridTemplateColumns", "Grid columns", "Enter CSS tracks such as 1fr 1fr or auto.", "none")}
-              {grid && cssValue("gridTemplateRows", "Grid rows", "Enter CSS tracks such as 1fr 1fr or auto.", "none")}
-              {cssValue("gap", "Gap", "Enter a CSS gap such as 16px or 1rem.", "normal")}
-            </>
-          )}
-          {display !== "none" && (
-            <>
-              {dimensionFields.map(([property, label]) => (
-                <div key={property}>{cssValue(property, label, "Enter a CSS size such as 320px or 50%.")}</div>
-              ))}
-              {cssValue("margin", "Margin", "Enter 1–4 values, such as 12px auto.")}
-              {cssValue("padding", "Padding", "Enter 1–4 nonnegative values, such as 8px 1rem.")}
-              {select("position", "Position", position, ["relative", "absolute"])}
-              {position !== "static" && cssValue("inset", "Inset", "Enter 1–4 values in top, right, bottom, left order, such as 0 auto auto 8px.", "auto")}
-              {select("overflow", "Overflow", style.overflow ?? "visible", overflowOptions)}
-              {cssValue("zIndex", "Z-index", "Enter a whole number or auto.", "auto")}
-            </>
-          )}
-        </div>
-      </section>
-    </ScrollArea>
+    <StyleInspectorSection title="Layout">
+      {container && select("display", "Display", display, disclosure ? ["block", "none"] : displayOptions)}
+      {container && !disclosure && flex && (
+        <>
+          {select("flexDirection", "Direction", style.flexDirection ?? "row", ["row", "column"])}
+          {select("flexWrap", "Wrap", style.flexWrap ?? "nowrap", ["nowrap", "wrap"])}
+        </>
+      )}
+      {container && !disclosure && (flex || grid) && (
+        <>
+          {select("alignItems", "Align items", style.alignItems ?? "normal", ["normal", "start", "center", "end", "stretch", "baseline"])}
+          {select("justifyContent", "Justify content", style.justifyContent ?? "normal", grid ? [...justifyOptions, "stretch"] : justifyOptions)}
+          {grid && cssValue("gridTemplateColumns", "Grid columns", "Enter CSS tracks such as 1fr 1fr or auto.", "none")}
+          {grid && cssValue("gridTemplateRows", "Grid rows", "Enter CSS tracks such as 1fr 1fr or auto.", "none")}
+          {cssValue("gap", "Gap", "Enter a CSS gap such as 16px or 1rem.", "normal")}
+        </>
+      )}
+      {display !== "none" && (
+        <>
+          {dimensionFields.map(([property, label]) => (
+            <div key={property}>{cssValue(property, label, "Enter a CSS size such as 320px or 50%.")}</div>
+          ))}
+          {cssValue("margin", "Margin", "Enter 1–4 values, such as 12px auto.")}
+          {cssValue("padding", "Padding", "Enter 1–4 nonnegative values, such as 8px 1rem.")}
+          {select("position", "Position", position, ["relative", "absolute"])}
+          {position !== "static" && cssValue("inset", "Inset", "Enter 1–4 values in top, right, bottom, left order, such as 0 auto auto 8px.", "auto")}
+          {select("overflow", "Overflow", style.overflow ?? "visible", overflowOptions)}
+          {cssValue("zIndex", "Z-index", "Enter a whole number or auto.", "auto")}
+        </>
+      )}
+    </StyleInspectorSection>
   );
 }

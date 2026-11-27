@@ -466,3 +466,123 @@ test("Image Layout overrides fill the padded frame and reset to the wider breakp
   await expect(page.getByRole("button", { name: "Layout", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Typography", exact: true })).toBeVisible();
 });
+
+test("Heading typography follows the active breakpoint, resets, and survives reload", async ({ page }) => {
+  const hero = page.locator('article [data-node-id][aria-label="Hero"]');
+  const title = hero.getByText("Spaces for slower living.", { exact: true });
+  const titleNode = hero.locator('[data-node-id][aria-label="Heading"]');
+  const size = page.getByRole("textbox", { name: "Size", exact: true });
+  const reset = page.getByRole("button", { name: "Reset Size", exact: true });
+  const undo = page.getByRole("button", { name: "Undo", exact: true });
+  const desktop = page.getByRole("button", { name: "Desktop viewport" });
+  const tablet = page.getByRole("button", { name: "Tablet viewport" });
+  const mobile = page.getByRole("button", { name: "Mobile viewport" });
+  const selectHeading = async () => {
+    const id = await titleNode.getAttribute("data-node-id");
+    await page.locator(`[data-layer-node-id="${id}"]`).getByRole("button", { name: "Heading", exact: true }).click();
+  };
+
+  await selectHeading();
+  const defaultSize = await title.evaluate((element) => getComputedStyle(element).fontSize);
+  await size.fill("30px");
+  await expect(title).toHaveCSS("font-size", "30px");
+  await tablet.click();
+  await expect(size).toHaveValue("30px");
+  await expect(reset).toHaveCount(0);
+  await size.fill("24px");
+  await mobile.click();
+  await expect(title).toHaveCSS("font-size", "24px");
+  await size.fill("18px");
+  await expect(title).toHaveCSS("font-size", "18px");
+  await desktop.click();
+  await expect(title).toHaveCSS("font-size", "30px");
+
+  await expect(hero.locator("h1")).toHaveText("Spaces for slower living.");
+  await page.getByRole("tab", { name: "Settings" }).click();
+  await page.getByRole("combobox", { name: "Heading level" }).selectOption("h3");
+  await expect(hero.locator("h3")).toHaveText("Spaces for slower living.");
+  await expect(title).toHaveCSS("font-size", "30px");
+  await expect(savedStatus(page)).toBeVisible();
+  await page.reload();
+
+  await selectHeading();
+  await expect(hero.locator("h3")).toHaveText("Spaces for slower living.");
+  await mobile.click();
+  await expect(size).toHaveValue("18px");
+  await reset.click();
+  await expect(size).toHaveValue("24px");
+  await expect(title).toHaveCSS("font-size", "24px");
+  await undo.click();
+  await expect(title).toHaveCSS("font-size", "18px");
+  await reset.click();
+  await tablet.click();
+  await reset.click();
+  await expect(title).toHaveCSS("font-size", "30px");
+  await mobile.click();
+  await expect(title).toHaveCSS("font-size", "30px");
+  await expect(reset).toHaveCount(0);
+  await desktop.click();
+  await reset.click();
+  await expect(title).toHaveCSS("font-size", defaultSize);
+});
+
+test("Text and Button typography updates owned preview text and the heading stays sticky", async ({ page }) => {
+  const hero = page.locator('article [data-node-id][aria-label="Hero"]');
+  const section = page.locator('article [data-node-id][aria-label="Content + media"]');
+  const copy = section.locator('[data-node-id][aria-label="Description"] p');
+  const label = hero.locator('[data-node-id][aria-label="CTA button"] > span');
+  const typography = page.getByRole("button", { name: "Typography", exact: true });
+  const field = (name: string) => page.getByRole("textbox", { name, exact: true });
+  const option = (name: string) => page.getByRole("combobox", { name, exact: true });
+  const selectLayer = async (node: ReturnType<Page["locator"]>, name: string) => {
+    const id = await node.getAttribute("data-node-id");
+    await page.locator(`[data-layer-node-id="${id}"]`).getByRole("button", { name, exact: true }).click();
+  };
+
+  await selectLayer(section, "Content + media");
+  await expect(typography).toHaveCount(0);
+  await selectLayer(copy.locator(".."), "Description");
+  await expect(typography).toBeVisible();
+  await expect(page.getByRole("button", { name: "Appearance", exact: true })).toHaveCount(0);
+  await field("Font family").fill("Georgia, serif");
+  await option("Weight").selectOption("700");
+  await field("Line height").fill("28px");
+  await field("Letter spacing").fill("-1px");
+  await field("Color").fill("#275d38");
+  await option("Alignment").selectOption("right");
+  await expect(copy).toHaveCSS("font-family", "Georgia, serif");
+  await expect(copy).toHaveCSS("font-weight", "700");
+  await expect(copy).toHaveCSS("line-height", "28px");
+  await expect(copy).toHaveCSS("letter-spacing", "-1px");
+  await expect(copy).toHaveCSS("color", "rgb(39, 93, 56)");
+  await expect(copy).toHaveCSS("text-align", "right");
+  await field("Color").fill("not-a-color");
+  await expect(field("Color")).toHaveAttribute("aria-invalid", "true");
+  await expect(copy).toHaveCSS("color", "rgb(39, 93, 56)");
+
+  await selectLayer(label.locator(".."), "CTA button");
+  await option("Decoration").selectOption("underline");
+  await option("Transform").selectOption("uppercase");
+  await option("Style").selectOption("italic");
+  await field("Width").fill("140px");
+  await field("Size").fill("20px");
+  await option("Wrapping").selectOption("nowrap");
+  const singleLineHeight = await label.evaluate((element) => element.clientHeight);
+  await option("Wrapping").selectOption("normal");
+  await expect.poll(() => label.evaluate((element) => element.clientHeight)).toBeGreaterThan(singleLineHeight);
+  await expect(label).toHaveCSS("text-decoration-line", "underline");
+  await expect(label).toHaveCSS("text-transform", "uppercase");
+  await expect(label).toHaveCSS("font-style", "italic");
+  await expect(label).toHaveCSS("white-space", "normal");
+  await expect(copy).toHaveCSS("text-transform", "none");
+
+  const scroll = page.locator('[data-slot="scroll-area-viewport"]').filter({ has: typography });
+  await scroll.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect(typography).toHaveCSS("position", "sticky");
+  await expect(typography).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(typography).not.toHaveCSS("box-shadow", "none");
+  await expect.poll(async () => {
+    const [header, viewport] = await Promise.all([typography.boundingBox(), scroll.boundingBox()]);
+    return Math.abs(header!.y - viewport!.y);
+  }).toBeLessThan(2);
+});

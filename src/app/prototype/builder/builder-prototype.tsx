@@ -101,12 +101,15 @@ import { Dialog } from "@base-ui/react/dialog";
 import { LayoutInspector } from "./layout-inspector";
 import { ButtonLinkControl, PreviewText } from "./preview-content";
 import { PreviewImage, type ImageEdit } from "./preview-image";
+import { ownsText, splitTypographyStyles, TypographyInspector } from "./typography-inspector";
 import {
   applyDocumentOperation,
   canInsertAt,
+  headingLevels,
   insertionAtSelection,
   isContainer,
   proposeNodeMove,
+  resolveHeadingLevel,
   proposeNodeMoveAt,
   resolveStyles,
   selectionAfterDelete,
@@ -1366,7 +1369,7 @@ const presetContainerClasses: Record<string, string> = {
   "preset-links": "px-4 py-3",
   "preset-questions": "divide-y divide-zinc-200 rounded-lg border border-zinc-200 px-4",
   "preset-quote": "mx-auto max-w-3xl rounded-lg bg-white p-8 text-zinc-900",
-  "preset-stat": "rounded-lg bg-white p-7 text-center text-zinc-900 [&_h2]:text-5xl",
+  "preset-stat": "rounded-lg bg-white p-7 text-center text-zinc-900 [&_:is(h1,h2,h3,h4,h5,h6)]:text-5xl",
 };
 
 function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActions; node: EditorNode; breakpoint: Breakpoint; move: PreviewMove }) {
@@ -1378,25 +1381,27 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
     <PreviewNode actions={actions} breakpoint={breakpoint} key={id} move={move} node={page.nodes[id]} />
   ));
   const style = resolveStyles(node, breakpoint);
+  const { frameStyle, textStyle } = splitTypographyStyles(style);
   const hasButton = node.type === "button" || node.type === "card" || node.type === "form" || node.type === "navigation";
   const updateContent = (content: NodeContent) => actions.updateBlockContent(node.id, content);
   const text = (
     field: "title" | "body" | "buttonLabel",
-    as: "h1" | "h2" | "p" | "span",
+    as: "heading" | "p" | "span",
     className?: string,
   ) => (
     <PreviewText
-      as={as}
+      as={as === "heading" ? resolveHeadingLevel(node) : as}
       className={className}
       field={field}
       label={field === "buttonLabel" ? "Button label" : nodeDetails(node).label}
       multiline={field !== "buttonLabel"}
       onCommit={updateContent}
+      style={textStyle}
       value={content[field]}
     />
   );
   const frame = (className: string, body?: ReactNode, nested: ReactNode = children) => (
-    <PreviewSelectable actions={actions} className={className} emptyContainer={isContainer(node.type) && !node.childIds.some((id) => page.nodes[id].visible)} hasButton={hasButton} move={move} node={node} style={style}>
+    <PreviewSelectable actions={actions} className={className} emptyContainer={isContainer(node.type) && !node.childIds.some((id) => page.nodes[id].visible)} hasButton={hasButton} move={move} node={node} style={ownsText(node) ? frameStyle : style}>
       {body}
       {nested}
     </PreviewSelectable>
@@ -1445,23 +1450,23 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
       ), null);
     }
     case "preset-heading":
-      return frame("font-semibold tracking-tight", text("title", "h2"));
+      return frame("", text("title", "heading", "font-semibold tracking-tight"));
     case "preset-text":
-      return frame("text-sm", text("body", "p"));
+      return frame("", text("body", "p", "text-sm"));
     case "preset-button":
-      return frame("w-fit", text("buttonLabel", "span", buttonVariants({ size: "sm", variant: "outline" })));
+      return frame("w-fit max-w-full", text("buttonLabel", "span", buttonVariants({ size: "sm", variant: "outline", className: "inline-block h-auto min-h-7 w-full content-center text-center" })));
     case "hero-eyebrow":
     case "content-media-eyebrow":
-      return frame("w-fit rounded-md text-xs font-medium tracking-[0.18em] text-zinc-500 uppercase", text("body", "span", "block"));
+      return frame("w-fit rounded-md", text("body", "span", "block text-xs font-medium tracking-[0.18em] text-zinc-500 uppercase"));
     case "hero-heading":
-      return frame("max-w-xl rounded-md font-semibold tracking-[-0.06em] text-zinc-900 " + (breakpoint === "base" ? "text-6xl" : "text-5xl"), text("title", "h1"));
+      return frame("max-w-xl rounded-md", text("title", "heading", "font-semibold tracking-[-0.06em] text-zinc-900 " + (breakpoint === "base" ? "text-6xl" : "text-5xl")));
     case "content-media-heading":
-      return frame("rounded-md text-4xl font-semibold tracking-[-0.04em]", text("title", "h2"));
+      return frame("rounded-md", text("title", "heading", "text-4xl font-semibold tracking-[-0.04em]"));
     case "hero-description":
     case "content-media-description":
-      return frame("max-w-md rounded-md text-sm leading-6 opacity-80", text("body", "p"));
+      return frame("max-w-md rounded-md opacity-80", text("body", "p", "text-sm leading-6"));
     case "hero-cta-button":
-      return frame("inline-flex w-fit rounded-md bg-zinc-900 text-sm font-medium text-white", text("buttonLabel", "span", "px-4 py-3"));
+      return frame("inline-flex w-fit max-w-full rounded-md bg-zinc-900", text("buttonLabel", "span", "min-w-0 flex-1 px-4 py-3 text-sm font-medium text-white"));
     case "section":
       return frame("rounded-xl bg-[#f5f2ec] px-8 py-12 text-center", <>{text("title", "p", "text-2xl font-semibold tracking-tight text-zinc-900")}{text("body", "p", "mx-auto mt-3 max-w-lg text-sm leading-6 text-zinc-600")}</>);
   }
@@ -1476,11 +1481,11 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
     case "grid":
       return frame("bg-white p-6", <><div className="grid grid-cols-3 gap-4">{["Discover", "Create", "Launch"].map((label, index) => <Card className="border border-zinc-200 bg-zinc-50 shadow-none" key={label}><CardContent className="p-5"><span className="text-xs text-zinc-400">0{index + 1}</span><p className="mt-6 text-sm font-semibold text-zinc-900">{label}</p></CardContent></Card>)}</div></>);
     case "heading":
-      return frame("rounded-xl bg-white", text("title", "h2", "px-8 py-10 text-4xl font-semibold tracking-[-0.04em] text-zinc-900 max-w-[52rem]"));
+      return frame("rounded-xl bg-white", text("title", "heading", "px-8 py-10 text-4xl font-semibold tracking-[-0.04em] text-zinc-900 max-w-[52rem]"));
     case "text":
       return frame("rounded-xl bg-white", text("body", "p", "px-8 py-6 text-base leading-7 text-zinc-600 max-w-[46rem]"));
     case "button":
-      return frame("inline-flex", text("buttonLabel", "span", buttonVariants({ className: "bg-zinc-900 px-5 text-sm text-white hover:bg-zinc-800" })));
+      return frame("inline-flex max-w-full", text("buttonLabel", "span", buttonVariants({ className: "inline-block h-auto min-h-8 w-full content-center bg-zinc-900 px-5 text-center text-sm text-white hover:bg-zinc-800" })));
     case "divider":
       return frame("py-5", <><Separator /></>);
     case "card":
@@ -1490,7 +1495,7 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
     case "stat":
       return frame("bg-zinc-50 p-6", <Card className="border border-zinc-200 bg-white text-center shadow-none"><CardContent className="p-7">{text("title", "p", "text-5xl font-semibold tracking-[-0.05em] text-zinc-900")}{text("body", "p", "mt-2 text-sm text-zinc-500")}</CardContent></Card>);
     case "accordion":
-      return frame("bg-white p-6", <Accordion className="rounded-lg border border-zinc-200 px-4" defaultValue={["first"]}><AccordionItem value="first"><AccordionTrigger>{content.title}</AccordionTrigger><AccordionContent>{text("body", "p")}</AccordionContent></AccordionItem><AccordionItem value="second"><AccordionTrigger>How long does it take?</AccordionTrigger><AccordionContent>Timelines are shaped around your team, scope, and launch goals.</AccordionContent></AccordionItem></Accordion>);
+      return frame("bg-white p-6", <Accordion className="rounded-lg border border-zinc-200 px-4" defaultValue={["first"]}><AccordionItem value="first"><AccordionTrigger><span className="flex-1" style={textStyle}>{content.title}</span></AccordionTrigger><AccordionContent>{text("body", "p")}</AccordionContent></AccordionItem><AccordionItem value="second"><AccordionTrigger>How long does it take?</AccordionTrigger><AccordionContent>Timelines are shaped around your team, scope, and launch goals.</AccordionContent></AccordionItem></Accordion>);
     case "form":
       return frame("bg-zinc-50 p-6", <Card className="border border-zinc-200 bg-white shadow-none"><CardHeader><CardTitle>{text("title", "span", "block")}</CardTitle><CardDescription>{text("body", "span", "block")}</CardDescription></CardHeader><CardContent className="grid gap-3"><Input placeholder="Your name" /><Input placeholder="you@example.com" /><Input placeholder="How can we help?" /></CardContent><CardFooter>{text("buttonLabel", "span", buttonVariants())}</CardFooter></Card>);
     case "navigation":
@@ -1596,13 +1601,16 @@ function PropertyRow({ label, value }: { label: string; value: string }) {
 
 function Inspector({ actions, breakpoint }: { actions: EditorActions; breakpoint: Breakpoint }) {
   const { page, selectedNode: node } = actions;
+  const showLayout = !!node && node.type !== "text";
+  const showTypography = !!node && ownsText(node);
+  const showAppearance = node?.type !== "text" && node?.type !== "heading";
   return (
     <aside className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-white">
       <Tabs className="min-h-0 flex-1 !gap-0" defaultValue="style">
         <div className="flex h-12 shrink-0 items-center border-b border-zinc-200 px-4 text-xs"><TabsList className="!grid !h-full !w-40 grid-cols-2 !gap-0 !p-0" variant="line"><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs data-active:text-zinc-950 after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="style">Style</TabsTrigger><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="settings">Settings</TabsTrigger></TabsList><MoreHorizontal className="ml-auto size-4 text-zinc-500" /></div>
         <TabsContent className="min-h-0" value="style">
           <ResizablePanelGroup className="min-h-0 flex-1" id="inspector-sections" orientation="vertical">
-            {page && node && node.type !== "text" && (
+            {page && node && showLayout && (
               <>
                 <ResizablePanel defaultSize="38" id="layout" minSize="210px">
                   <LayoutInspector
@@ -1613,15 +1621,44 @@ function Inspector({ actions, breakpoint }: { actions: EditorActions; breakpoint
                     onReset={(property) => actions.edit({ type: "node.resetStyle", pageId: page.id, nodeId: node.id, breakpoint, property })}
                   />
                 </ResizablePanel>
-                <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
+                {(showTypography || showAppearance) && <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />}
               </>
             )}
-            <ResizablePanel defaultSize="42" id="typography" minSize="240px"><ScrollArea className="h-full"><InspectorSection title="Typography"><Button className="h-8 w-full justify-between bg-zinc-50 px-2 text-base font-medium hover:bg-zinc-100" variant="ghost">Inter <ChevronDown className="size-3 text-zinc-500" /></Button><PropertyRow label="Weight" value="Semibold" /><PropertyRow label="Size" value="76   px" /><div className="grid grid-cols-2 gap-2"><Input aria-label="Line height" className="h-8 border-0 bg-zinc-50 text-xs shadow-none" readOnly value="↕  98%" /><Input aria-label="Letter spacing" className="h-8 border-0 bg-zinc-50 text-xs shadow-none" readOnly value="↔  −1.6" /></div><div className="grid grid-cols-4 rounded-md bg-zinc-50 p-1"><Button className="h-7 bg-white text-orange-600" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button></div><PropertyRow label="Color" value="■  333B32   100%" /></InspectorSection></ScrollArea></ResizablePanel>
-            <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
-            <ResizablePanel defaultSize="20" id="appearance" minSize="120px"><ScrollArea className="h-full"><InspectorSection title="Appearance"><PropertyRow label="Opacity" value="100%" /><PropertyRow label="Radius" value="⌜  0" /></InspectorSection><Button className="h-10 w-full justify-between rounded-none px-4 text-xs font-semibold hover:bg-zinc-50" variant="ghost">Effects <Plus className="size-3.5 text-zinc-500" /></Button></ScrollArea></ResizablePanel>
+            {page && node && showTypography && (
+              <>
+                <ResizablePanel defaultSize="42" id="typography" minSize="240px">
+                  <TypographyInspector
+                    breakpoint={breakpoint}
+                    key={`${page.id}:${node.id}:${breakpoint}`}
+                    node={node}
+                    onChange={(styles) => actions.edit({ type: "node.updateStyle", pageId: page.id, nodeId: node.id, breakpoint, styles })}
+                    onReset={(property) => actions.edit({ type: "node.resetStyle", pageId: page.id, nodeId: node.id, breakpoint, property })}
+                  />
+                </ResizablePanel>
+                {showAppearance && <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />}
+              </>
+            )}
+            {showAppearance && <ResizablePanel defaultSize="20" id="appearance" minSize="120px"><ScrollArea className="h-full"><InspectorSection title="Appearance"><PropertyRow label="Opacity" value="100%" /><PropertyRow label="Radius" value="⌜  0" /></InspectorSection><Button className="h-10 w-full justify-between rounded-none px-4 text-xs font-semibold hover:bg-zinc-50" variant="ghost">Effects <Plus className="size-3.5 text-zinc-500" /></Button></ScrollArea></ResizablePanel>}
           </ResizablePanelGroup>
         </TabsContent>
         <TabsContent className="min-h-0 overflow-auto" value="settings">
+          {node?.type === "heading" && (
+            <InspectorSection title="Content">
+              <label className="grid gap-1.5 text-xs font-medium text-zinc-600">
+                Heading level
+                <select
+                  className="h-8 rounded-lg border border-input bg-zinc-50 px-2 text-xs focus-visible:outline-orange-500"
+                  onChange={(event) => {
+                    const level = headingLevels.find((level) => level === event.target.value);
+                    if (level) actions.updateBlockContent(node.id, { headingLevel: level });
+                  }}
+                  value={resolveHeadingLevel(node)}
+                >
+                  {headingLevels.map((level) => <option key={level} value={level}>{level.toUpperCase()}</option>)}
+                </select>
+              </label>
+            </InspectorSection>
+          )}
           {node?.type === "input" && (
             <InspectorSection title="Content">
               <label className="grid gap-1.5 text-xs font-medium text-zinc-600">

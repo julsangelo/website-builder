@@ -9,10 +9,14 @@ export const blockTypes = [
 
 export type BlockType = typeof blockTypes[number];
 
+export const headingLevels = ["h1", "h2", "h3", "h4", "h5", "h6"] as const;
+export type HeadingLevel = typeof headingLevels[number];
+
 export type NodeContent = {
   alt?: string;
   body?: string;
   buttonLabel?: string;
+  headingLevel?: HeadingLevel;
   href?: string;
   imageAssetId?: string;
   imageUrl?: string;
@@ -57,6 +61,11 @@ export type SiteDocument = {
 
 export function isContainer(type: BlockType) {
   return type === "section" || type === "box" || type === "stack" || type === "grid";
+}
+
+export function resolveHeadingLevel(node: EditorNode): HeadingLevel {
+  return headingLevels.find((level) => level === node.content.headingLevel)
+    ?? (node.metadata?.appearance === "hero-heading" ? "h1" : "h2");
 }
 
 const containerStyleDefaults: Record<string, StyleValues> = {
