@@ -134,12 +134,13 @@ export function InspectorChoices({ label, options, value, onChange }: {
   </div>;
 }
 
-export function InspectorNumber({ label, value, onChange, signed = false, count = false, placeholder }: {
+export function InspectorNumber({ label, value, onChange, signed = false, count = false, max, placeholder }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   signed?: boolean;
   count?: boolean;
+  max?: number;
   placeholder?: string;
 }) {
   const id = useId();
@@ -157,13 +158,14 @@ export function InspectorNumber({ label, value, onChange, signed = false, count 
         const text = event.target.value;
         const number = Number(text);
         const valid = /^-?(?:\d+\.?\d*|\.\d+)$/.test(text) && Number.isFinite(number)
-          && (signed || number >= 0) && (!count || (Number.isSafeInteger(number) && number >= 1 && number <= 1000));
+          && (signed || number >= 0) && (max === undefined || number <= max)
+          && (!count || (Number.isSafeInteger(number) && number >= 1 && number <= 1000));
         const next = String(number);
         setDraft({ source: valid ? next : value, text, invalid: !valid });
         if (valid && next !== value) onChange(next);
       }} />
     {active?.invalid && <p id={id} className="mt-1 text-xs text-destructive">
-      {count ? "Enter a whole number from 1 to 1000." : signed ? "Enter a number." : "Enter zero or a positive number."}
+      {count ? "Enter a whole number from 1 to 1000." : max !== undefined ? `Enter a number from 0 to ${max}.` : signed ? "Enter a number." : "Enter zero or a positive number."}
     </p>}
   </div>;
 }

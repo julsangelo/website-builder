@@ -1665,6 +1665,9 @@ function Inspector({ actions, breakpoint, compact = false }: { actions: EditorAc
         <TabsContent className="min-h-0" value="style"
           onFocusCapture={(event) => { gesture.current = event.target instanceof HTMLInputElement ? Symbol() : undefined; }}
           onBlurCapture={() => { gesture.current = undefined; }}
+          onPointerDownCapture={(event) => {
+            if (event.target instanceof HTMLInputElement && event.target.type === "range") gesture.current = Symbol();
+          }}
         >
           <ResizablePanelGroup className="min-h-0 flex-1" id="inspector-sections" orientation="vertical">
             {page && node && showLayout && (
