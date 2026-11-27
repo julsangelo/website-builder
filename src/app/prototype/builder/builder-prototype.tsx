@@ -10,6 +10,7 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -97,6 +98,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog } from "@base-ui/react/dialog";
 import { AppearanceInspector, ownsSurface, splitAppearanceStyles } from "./appearance-inspector";
 import { LayoutInspector } from "./layout-inspector";
@@ -730,6 +732,7 @@ function LayerMoveDialog({ page, nodeId, open, onClose, onMove, restoreFocus }: 
 function LayerTreeItem({
   collapsed = false,
   collapsible = false,
+  indent,
   inheritedHidden = false,
   icon: Icon,
   label,
@@ -740,12 +743,14 @@ function LayerTreeItem({
   onSelect,
   onToggleCollapse,
   onToggleVisibility,
+  parentPath,
   selection,
   drop,
   visible,
 }: {
   collapsed?: boolean;
   collapsible?: boolean;
+  indent: number;
   inheritedHidden?: boolean;
   icon: LucideIcon;
   label: string;
@@ -756,12 +761,16 @@ function LayerTreeItem({
   onSelect: () => void;
   onToggleCollapse?: () => void;
   onToggleVisibility: () => void;
+  parentPath: string;
   selection: LayerSelection | null;
   drop: ReturnType<typeof useLayerDrag>["drop"];
   visible: boolean;
 }) {
   const active = selection !== null;
   const visuallyHidden = inheritedHidden || !visible;
+  const toggleAction = collapsed ? "Expand" : "Collapse";
+  const visibilityAction = visible ? "Hide" : "Show";
+  const nameTooltipId = useId();
   const rowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (selection) rowRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -770,7 +779,7 @@ function LayerTreeItem({
   return (
     <div
       className={
-        "group relative flex h-8 items-center rounded-md transition " +
+        "group relative flex h-8 w-full min-w-0 items-center rounded-md pr-1 transition " +
         (active ? "bg-orange-100 text-orange-600 hover:text-zinc-950 " : "text-zinc-700 hover:bg-zinc-100 ") +
         (drop?.reason ? "ring-2 ring-inset ring-red-500" : drop?.placement === "inside" ? "bg-orange-50 ring-2 ring-inset ring-orange-500" : "")
       }
@@ -778,107 +787,129 @@ function LayerTreeItem({
       data-layer-node-id={nodeId}
       onDragStart={onDragStart}
       ref={rowRef}
-      style={{ paddingLeft: 8 }}
+      style={{ paddingInlineStart: indent }}
     >
       {collapsible ? (
-        <button
-          aria-expanded={!collapsed}
-          aria-label={`${collapsed ? "Expand" : "Collapse"} ${label}`}
-          className={"grid size-5 shrink-0 place-items-center rounded bg-transparent " + (active ? "text-orange-600 group-hover:text-zinc-950 hover:bg-orange-200 hover:text-zinc-950" : "text-zinc-500 hover:bg-zinc-200 hover:text-zinc-950")}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleCollapse?.();
-          }}
+        <Tooltip>
+          <TooltipTrigger
+            aria-expanded={!collapsed}
+            aria-label={`${toggleAction} ${label}`}
+            className={"bg-transparent " + (active ? "text-orange-600 group-hover:text-zinc-950 hover:bg-orange-200 hover:text-zinc-950" : "text-zinc-500 hover:bg-zinc-200 hover:text-zinc-950")}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleCollapse?.();
+            }}
+            render={<Button size="icon-xs" variant="ghost" />}
+            type="button"
+          >
+            <ChevronDown className={"size-3 transition-transform " + (collapsed ? "-rotate-90" : "")} />
+          </TooltipTrigger>
+          <TooltipContent>{toggleAction}</TooltipContent>
+        </Tooltip>
+      ) : <span aria-hidden className="w-6 shrink-0" />}
+      <Tooltip>
+        <TooltipTrigger
+          aria-current={active ? "true" : undefined}
+          aria-describedby={nameTooltipId}
+          aria-description={inheritedHidden ? "Hidden by a parent layer" : undefined}
+          data-layer-select=""
+          className={
+            "h-full min-w-0 flex-1 justify-start gap-1.5 rounded-md px-1 text-left text-xs font-normal hover:bg-transparent " +
+            (active ? "font-medium text-orange-600 group-hover:text-zinc-950 hover:text-zinc-950" : "text-zinc-700 hover:text-zinc-700")
+          }
+          onClick={onSelect}
+          render={<Button variant="ghost" />}
           type="button"
         >
-          <ChevronDown className={"size-3 transition-transform " + (collapsed ? "-rotate-90" : "")} />
-        </button>
-      ) : null}
-      <Button
-        aria-current={active ? "true" : undefined}
-        aria-description={inheritedHidden ? "Hidden by a parent layer" : undefined}
-        data-layer-select=""
-        className={
-          "h-full min-w-0 flex-1 justify-start gap-2 rounded-md px-1 text-left text-xs font-normal hover:bg-transparent " +
-          (active ? "font-medium text-orange-600 group-hover:text-zinc-950 hover:text-zinc-950" : "text-zinc-700 hover:text-zinc-700")
-        }
-        onClick={onSelect}
-        type="button"
-        variant="ghost"
-      >
-        <Icon className="size-3.5 shrink-0" />
-        <span className={visuallyHidden ? "truncate text-zinc-400 line-through" : "truncate"} title={label}>{label}</span>
-      </Button>
-      <div className="mr-1 flex shrink-0 items-center gap-0.5">
-        <Button
-          aria-label={`Move ${label}`}
-          className="size-5 bg-transparent text-zinc-500 hover:bg-zinc-200 hover:text-zinc-950"
-          data-layer-move=""
-          onClick={onMove}
-          size="icon-xs"
-          type="button"
-          variant="ghost"
-        >
-          <Move className="size-3" />
-        </Button>
-        <Button
-          aria-label={`${visible ? "Hide" : "Show"} ${label}`}
-          className={"size-5 bg-transparent " + (active ? "text-orange-600 group-hover:text-zinc-950 hover:bg-orange-200 hover:text-zinc-950" : "text-zinc-500 hover:bg-zinc-200 hover:text-zinc-950")}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleVisibility();
-          }}
-          size="icon-xs"
-          type="button"
-          variant="ghost"
-        >
-          {visible ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
-        </Button>
-        <Button
-          aria-label={`Delete ${label}`}
-          className={"size-5 bg-transparent hover:text-red-600 focus:opacity-100 " + (active ? "text-orange-600 opacity-60 hover:bg-orange-200 group-hover:opacity-100" : "text-zinc-400 opacity-0 hover:bg-red-50 group-hover:opacity-100")}
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete(event.currentTarget);
-          }}
-          size="icon-xs"
-          type="button"
-          variant="ghost"
-        >
-          <Trash2 className="size-3" />
-        </Button>
+          <Icon className="size-3.5 shrink-0" />
+          <span className={visuallyHidden ? "min-w-0 truncate text-zinc-400 line-through" : "min-w-0 truncate"}>{label}</span>
+        </TooltipTrigger>
+        <TooltipContent align="start" className="grid gap-1 wrap-anywhere" id={nameTooltipId}>
+          <span className="font-medium">{label}</span>
+          <span className="opacity-80">{parentPath}</span>
+          {inheritedHidden && <span className="sr-only">Hidden by a parent layer</span>}
+        </TooltipContent>
+      </Tooltip>
+      <div className="flex shrink-0 items-center gap-0.5">
+        <Tooltip>
+          <TooltipTrigger
+            aria-label={`Move ${label}`}
+            className="bg-transparent text-zinc-500 hover:bg-zinc-200 hover:text-zinc-950"
+            data-layer-move=""
+            onClick={onMove}
+            render={<Button size="icon-xs" variant="ghost" />}
+            type="button"
+          >
+            <Move className="size-3" />
+          </TooltipTrigger>
+          <TooltipContent>Move</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            aria-label={`${visibilityAction} ${label}`}
+            className={"bg-transparent " + (active ? "text-orange-600 group-hover:text-zinc-950 hover:bg-orange-200 hover:text-zinc-950" : "text-zinc-500 hover:bg-zinc-200 hover:text-zinc-950")}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleVisibility();
+            }}
+            render={<Button size="icon-xs" variant="ghost" />}
+            type="button"
+          >
+            {visible ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
+          </TooltipTrigger>
+          <TooltipContent>{visibilityAction}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            aria-label={`Delete ${label}`}
+            className={"bg-transparent hover:text-red-600 group-focus-within:opacity-100 group-hover:opacity-100 " + (active ? "text-orange-600 hover:bg-orange-200" : "text-zinc-400 opacity-0 hover:bg-red-50")}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete(event.currentTarget);
+            }}
+            render={<Button size="icon-xs" variant="ghost" />}
+            type="button"
+          >
+            <Trash2 className="size-3" />
+          </TooltipTrigger>
+          <TooltipContent>Delete</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );
 }
 
-function Layers({ actions, depth = 0, drag, ids, inheritedHidden = false, onMove }: {
+function Layers({ actions, depth = 0, drag, ids, inheritedHidden = false, onMove, parentPath }: {
   actions: EditorActions;
   depth?: number;
   drag: ReturnType<typeof useLayerDrag>;
   ids: string[];
   inheritedHidden?: boolean;
   onMove: (nodeId: string) => void;
+  parentPath: string;
 }) {
   if (!actions.page) return null;
   const { nodes } = actions.page;
+  const indent = 4 + Math.min(depth, 5) * 6;
   return (
-    <div className="space-y-0.5">
+    <ul className={depth ? "mt-0.5 space-y-0.5" : "space-y-0.5"} role="list">
       {ids.map((id) => {
         const node = nodes[id];
         const { label, icon } = nodeDetails(node);
+        const ancestry = `${parentPath} › ${label}`;
         const collapsed = actions.isLayerCollapsed(id);
         const drop = drag.drop?.targetId === id ? drag.drop : null;
         return (
-          <div className="relative" key={id}>
+          <li aria-level={depth + 1} className="relative" key={id} role="listitem">
             {drop && !drop.reason && drop.placement !== "inside" && (
-              <div aria-hidden className={`pointer-events-none absolute inset-x-0 z-10 h-0.5 rounded-full bg-orange-500 ${drop.placement === "before" ? "-top-px" : "-bottom-px"}`} />
+              <div aria-hidden className={`pointer-events-none absolute end-1 z-[1] h-0.5 rounded-full bg-orange-500 ${drop.placement === "before" ? "-top-px" : "-bottom-px"}`} style={{ insetInlineStart: indent }} />
             )}
             <LayerTreeItem
               collapsed={collapsed}
               collapsible={node.childIds.length > 0}
               drop={drop}
               icon={icon}
+              indent={indent}
               inheritedHidden={inheritedHidden}
               label={label}
               nodeId={id}
@@ -888,18 +919,17 @@ function Layers({ actions, depth = 0, drag, ids, inheritedHidden = false, onMove
               onSelect={() => actions.choose(node, "layers")}
               onToggleCollapse={() => actions.toggleLayerCollapse(id)}
               onToggleVisibility={() => actions.toggleLayerVisibility(node)}
+              parentPath={parentPath}
               selection={actions.selection?.id === id ? actions.selection : null}
               visible={node.visible}
             />
             {!collapsed && node.childIds.length > 0 && (
-              <div className={depth < 2 ? "ml-5 border-l border-zinc-200 pl-1.5" : depth < 4 ? "ml-1 border-l border-zinc-200 pl-0.5" : ""}>
-                <Layers actions={actions} depth={depth + 1} drag={drag} ids={node.childIds} inheritedHidden={inheritedHidden || !node.visible} onMove={onMove} />
-              </div>
+              <Layers actions={actions} depth={depth + 1} drag={drag} ids={node.childIds} inheritedHidden={inheritedHidden || !node.visible} onMove={onMove} parentPath={ancestry} />
             )}
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }
 
@@ -913,6 +943,7 @@ function LayersPanel({ actions }: { actions: EditorActions }) {
   return (
     <ScrollArea
       className="h-full"
+      viewportClassName="overflow-x-hidden [&>[data-slot=scroll-area-content]]:min-w-0!"
       viewportRef={viewportRef}
       viewportProps={{
         ...drag.viewportProps,
@@ -935,7 +966,9 @@ function LayersPanel({ actions }: { actions: EditorActions }) {
         </div>
         <div className="space-y-0.5 p-3 pt-2">
           {page?.rootIds.length ? (
-            <Layers actions={actions} drag={drag} ids={page.rootIds} onMove={(nodeId) => setMoveDialog({ nodeId, open: true })} />
+            <TooltipProvider delay={400}>
+              <Layers actions={actions} drag={drag} ids={page.rootIds} onMove={(nodeId) => setMoveDialog({ nodeId, open: true })} parentPath={page.name} />
+            </TooltipProvider>
           ) : (
             <Empty className="min-h-32 gap-2 border-0 bg-zinc-50/70 p-3">
               <EmptyHeader className="gap-1">

@@ -404,6 +404,161 @@ test("subtree deletion confirms its scope, restores focus, and uses one history 
   await expect(button(page, "Undo")).toBeDisabled();
 });
 
+test("deep Layers rows keep aligned actions and readable names in a narrow panel", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const { studio } = fixture([], 40);
+  const labelAt = (depth: number) => `Layer ${depth} with a deliberately long descriptive name`;
+  for (let depth = 0; depth <= 10; depth++) {
+    const node = createBlock(`depth-${depth}`, depth === 10 ? "heading" : "box");
+    node.metadata = { label: labelAt(depth) };
+    node.visible = depth !== 3;
+    if (depth === 0) studio.rootIds.unshift(node.id);
+    else {
+      node.parentId = `depth-${depth - 1}`;
+      studio.nodes[node.parentId].childIds.push(node.id);
+    }
+    studio.nodes[node.id] = node;
+  }
+  await openEditor(page, [studio]);
+  const root = row(page, "depth-0");
+  const viewport = root.locator('xpath=ancestor::div[@data-slot="scroll-area-viewport"]');
+  const handle = page.locator('[data-slot="resizable-handle"][aria-orientation="vertical"]').first();
+
+  async function resizePanel(distance: number) {
+    const bounds = (await handle.boundingBox())!;
+    const x = bounds.x + bounds.width / 2;
+    const y = bounds.y + bounds.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + distance, y, { steps: 6 });
+    await page.mouse.up();
+  }
+
+  async function checkRows() {
+    for (const depth of [0, 3, 6, 10]) {
+      const layer = row(page, `depth-${depth}`);
+      const select = button(layer, labelAt(depth));
+      await expect(layer.locator("..")).toHaveAttribute("aria-level", String(depth + 1));
+      const rootBounds = (await root.boundingBox())!;
+      const bounds = (await layer.boundingBox())!;
+      expect([bounds.x, bounds.width]).toEqual([rootBounds.x, rootBounds.width]);
+      const actions = layer.getByRole("button", { name: /^(Move|Hide|Show|Delete) / });
+      const actionBounds = await actions.evaluateAll((controls) =>
+        controls.map((control) => {
+          const { left, width } = control.getBoundingClientRect();
+          return [left, width];
+        }));
+      const rootActionBounds = await root.getByRole("button", { name: /^(Move|Hide|Delete) / })
+        .evaluateAll((controls) => controls.map((control) => {
+          const { left, width } = control.getBoundingClientRect();
+          return [left, width];
+        }));
+      expect(actionBounds).toEqual(rootActionBounds);
+      expect(actionBounds).toHaveLength(3);
+      for (const [left, width] of actionBounds) {
+        expect(width).toBeGreaterThanOrEqual(24);
+        expect(left + width).toBeLessThanOrEqual(bounds.x + bounds.width);
+      }
+      const text = select.locator("span");
+      const labelBounds = await text.evaluate((element) => ({
+        width: element.clientWidth,
+        contentWidth: element.scrollWidth,
+        overflow: getComputedStyle(element).textOverflow,
+      }));
+      expect(labelBounds.width, `label width at depth ${depth}`).toBeGreaterThan(0);
+      expect(labelBounds.contentWidth, `label content width at depth ${depth}`).toBeGreaterThan(labelBounds.width);
+      expect(labelBounds.overflow).toBe("ellipsis");
+      expect(await text.evaluate((element) => getComputedStyle(element).textDecorationLine))
+        .toBe(depth === 0 ? "none" : "line-through");
+    }
+    expect(await viewport.evaluate((element) => [
+      element.scrollWidth === element.clientWidth,
+      element.scrollHeight > element.clientHeight,
+    ])).toEqual([true, true]);
+  }
+
+  await resizePanel(-100);
+  expect(Math.round((await viewport.boundingBox())!.width)).toBe(200);
+  await checkRows();
+
+  const deep = row(page, "depth-10");
+  const select = button(deep, labelAt(10));
+  const move = button(deep, `Move ${labelAt(10)}`);
+  const eye = button(deep, `Hide ${labelAt(10)}`);
+  const remove = button(deep, `Delete ${labelAt(10)}`);
+  await select.press("Enter");
+  await expect(select).toHaveAttribute("aria-current", "true");
+  await expect(select).toHaveAccessibleDescription(/Hidden by a parent layer/);
+  await expect(deep).toHaveClass(/bg-orange-100/);
+  await expect(remove).toHaveCSS("opacity", "1");
+  await expect.poll(() => viewport.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  const heading = page.getByRole("heading", { name: "Layers", exact: true }).locator("..");
+  expect((await heading.boundingBox())!.y).toBe((await viewport.boundingBox())!.y);
+  await expect(heading).not.toHaveCSS("box-shadow", "none");
+
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await expect(select).toBeFocused();
+  const nameTooltip = page.getByRole("tooltip").filter({ hasText: labelAt(10) });
+  await expect(nameTooltip).toContainText(`Studio › ${labelAt(0)}`);
+  await expect(nameTooltip).toContainText(labelAt(9));
+  await page.keyboard.press("Escape");
+  await expect(nameTooltip).toBeHidden();
+  await heading.hover();
+  await select.hover();
+  await expect(nameTooltip).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  const scrollTop = await viewport.evaluate((element) => element.scrollTop);
+  await resizePanel(24);
+  expect(Math.round((await viewport.boundingBox())!.width)).toBe(224);
+  expect(await viewport.evaluate((element) => element.scrollTop)).toBe(scrollTop);
+  await expect(select).toHaveAttribute("aria-current", "true");
+  await expect(button(root, `Collapse ${labelAt(0)}`)).toHaveAttribute("aria-expanded", "true");
+  await checkRows();
+
+  await move.click();
+  await expect(page.getByRole("dialog", { name: `Move ${labelAt(10)}` })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(move).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(eye).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(button(deep, `Show ${labelAt(10)}`)).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(remove).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", { name: "Delete layer?" })).toBeVisible();
+  await button(page, "Cancel").click();
+  expect((await stored(page)).document.pages[0].nodes["depth-10"].visible).toBe(false);
+
+  const destination = row(page, "depth-6");
+  // Keep both rows within the viewport and clear of the sticky heading and drag-scroll edges.
+  await destination.evaluate((element) => {
+    const viewport = element.closest('[data-slot="scroll-area-viewport"]')!;
+    viewport.scrollTop += element.getBoundingClientRect().top - viewport.getBoundingClientRect().top - 72;
+  });
+  await dragOver(page, deep, destination);
+  await expect(destination).toHaveClass(/ring-orange-500/);
+  await page.mouse.up();
+  expect((await stored(page)).document.pages[0].nodes["depth-10"].parentId).toBe("depth-6");
+  await expect(select).toHaveAttribute("aria-current", "true");
+  await button(page, "Undo").click();
+  expect((await stored(page)).document.pages[0].nodes["depth-10"].parentId).toBe("depth-9");
+
+  await page.setViewportSize({ width: 320, height: 700 });
+  await button(page, "Open Layers").press("Enter");
+  const compact = page.getByRole("dialog", { name: "Layers" });
+  const compactName = button(compact, labelAt(0));
+  await compactName.hover();
+  const compactTooltip = page.getByRole("tooltip").filter({ hasText: labelAt(0) });
+  await expect(compactTooltip).toBeVisible();
+  await expect.poll(() => compactTooltip.evaluate((element) => {
+    const { x, y, width, height } = element.getBoundingClientRect();
+    return element.contains(document.elementFromPoint(x + width / 2, y + height / 2));
+  })).toBe(true);
+});
+
 test("a Layers drag scrolls a long tree and applies the indicated sibling position", async ({ page }) => {
   const { studio } = fixture([], 40);
   await openEditor(page, [studio]);
