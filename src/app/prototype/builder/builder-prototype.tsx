@@ -1656,7 +1656,7 @@ function Inspector({ actions, breakpoint, compact = false }: { actions: EditorAc
   const gesture = useRef<symbol | undefined>(undefined);
   const hasSettings = node?.type === "heading" || node?.type === "input";
   const showLayout = !!node && node.type !== "text";
-  const showTypography = !!node && node.type !== "section" && ownsText(node);
+  const showTypography = !!node && ownsText(node);
   const showAppearance = !!node && ownsSurface(node);
   return (
     <aside className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-white">
