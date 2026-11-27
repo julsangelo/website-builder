@@ -10,13 +10,14 @@ type TextField = "title" | "body" | "buttonLabel";
 type TextInput = HTMLInputElement | HTMLTextAreaElement;
 
 export function PreviewText({
-  as: Element = "span", className = "", field, label, multiline = true, style, value = "", onCommit,
+  as: Element = "span", className = "", field, label, multiline = true, selected, style, value = "", onCommit,
 }: {
   as?: HeadingLevel | "p" | "span";
   className?: string;
   field: TextField;
   label: string;
   multiline?: boolean;
+  selected: boolean;
   style?: CSSProperties;
   value?: string;
   onCommit: (content: NodeContent) => void;
@@ -30,6 +31,13 @@ export function PreviewText({
     else input.setSelectionRange(session.caret, session.caret);
   }, [session]);
 
+  function begin(caret?: number) {
+    if (session) return;
+    finished.current = false;
+    const initial = multiline ? value.replace(/\r\n?/g, "\n") : value.replace(/[\r\n]/g, "");
+    setSession({ initial, caret });
+  }
+
   function start(event: MouseEvent<HTMLElement>) {
     event.stopPropagation();
     if (session) return;
@@ -41,9 +49,7 @@ export function PreviewText({
     const caret = textNode && currentTarget.contains(textNode) && textNode.nodeType === Node.TEXT_NODE
       ? position?.offset ?? range?.startOffset
       : undefined;
-    finished.current = false;
-    const initial = multiline ? value.replace(/\r\n?/g, "\n") : value.replace(/[\r\n]/g, "");
-    setSession({ initial, caret });
+    begin(caret);
   }
 
   function finish(input: TextInput, commit: boolean, restoreFocus = false) {
@@ -76,9 +82,18 @@ export function PreviewText({
 
   return (
     <Element
-      className={`${multiline ? "whitespace-pre-wrap wrap-break-word " : ""}${className}${value || session ? "" : " min-h-[1lh] min-w-[1ch]"}`}
+      aria-description={selected && !session ? "Press Enter to edit" : undefined}
+      className={`focus-visible:outline-2 focus-visible:outline-orange-500 ${multiline ? "whitespace-pre-wrap wrap-break-word " : ""}${className}${value || session ? "" : " min-h-[1lh] min-w-[1ch]"}`}
       onDoubleClick={start}
+      onKeyDown={(event) => {
+        if (selected && event.key === "Enter" && event.target === event.currentTarget) {
+          event.preventDefault();
+          event.stopPropagation();
+          begin();
+        }
+      }}
       style={style}
+      tabIndex={selected && !session ? 0 : undefined}
     >
       {session ? multiline
         ? <textarea {...inputProps} className={`${inputClass} block w-full resize-none [white-space:inherit]`} rows={1} />

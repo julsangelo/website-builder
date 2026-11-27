@@ -190,7 +190,7 @@ type PageDialogState =
   | { mode: "delete"; pageId: string }
   | null;
 
-type LayerDeleteDialogState = { hasChildren: boolean; label: string; layerId: string; pageId: string } | null;
+type LayerDeleteDialogState = { hasChildren: boolean; label: string; layerId: string; pageId: string; trigger: HTMLButtonElement } | null;
 
 const pagePresets: PagePreset[] = [
   {
@@ -296,7 +296,7 @@ type EditorActions = {
   expandLayer: (layerId: string) => void;
   moveLayer: (sourceId: string, targetId: string, placement: MovePlacement) => void;
   moveCanvasNode: (sourceId: string, target: InsertionTarget) => void;
-  requestLayerDelete: (node: EditorNode) => void;
+  requestLayerDelete: (node: EditorNode, trigger: HTMLButtonElement) => void;
   toggleLayerCollapse: (layerId: string) => void;
   toggleLayerVisibility: (node: EditorNode) => void;
   updateBlockContent: (blockId: string, content: NodeContent) => void;
@@ -319,7 +319,7 @@ function IconButton({ label, children }: { label: string; children: ReactNode })
 
 function ProjectBar({ canRedo, canUndo, onRedo, onUndo, saveStatus }: { canRedo: boolean; canUndo: boolean; onRedo: () => void; onUndo: () => void; saveStatus: string }) {
   return (
-    <header className="flex h-16 items-center gap-4 border-b border-zinc-200 bg-white px-5 text-zinc-900">
+    <header className="flex h-16 items-center gap-2 border-b border-zinc-200 bg-white px-3 text-zinc-900 sm:gap-4 sm:px-5">
       <div className="grid size-7 shrink-0 place-items-center rounded-md bg-zinc-900 text-lg font-bold text-white">
         f
       </div>
@@ -336,7 +336,7 @@ function ProjectBar({ canRedo, canUndo, onRedo, onUndo, saveStatus }: { canRedo:
         </Badge>
       </div>
       <Separator className="hidden h-5 sm:block" orientation="vertical" />
-      <div className="hidden items-center gap-1 sm:flex">
+      <div className="flex shrink-0 items-center gap-1">
         <Button aria-label="Undo" className="size-7 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-35" disabled={!canUndo} onClick={onUndo} size="icon-sm" variant="ghost"><Undo2 className="size-3.5" /></Button>
         <Button aria-label="Redo" className="size-7 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-35" disabled={!canRedo} onClick={onRedo} size="icon-sm" variant="ghost"><Redo2 className="size-3.5" /></Button>
       </div>
@@ -367,54 +367,49 @@ function ProjectBar({ canRedo, canUndo, onRedo, onUndo, saveStatus }: { canRedo:
   );
 }
 
-function QuickInsert({ actions, rail = false, scrolled = false }: { actions: EditorActions; rail?: boolean; scrolled?: boolean }) {
+function QuickInsert({ actions, draggable = true, scrolled = false }: { actions: EditorActions; draggable?: boolean; scrolled?: boolean }) {
   const [library, setLibrary] = useState<"blocks" | "sections">("blocks");
+  const [query, setQuery] = useState("");
+  const search = query.trim().toLowerCase();
+  const blocks = quickBlocks.filter(({ label }) => label.toLowerCase().includes(search));
+  const sections = sectionPresets.filter(({ label, description }) => `${label} ${description}`.toLowerCase().includes(search));
   function beginDrag(event: DragEvent, item: QuickInsertItem) {
     if (actions.page) startQuickInsertDrag(event, actions.insertDrag, { item, pageId: actions.page.id });
   }
 
   const items = (
-    <div className={rail ? "flex items-center gap-2" : "p-4"}>
-      {!rail && (
-        <div className="relative mb-3">
-          <Search className="absolute top-1/2 left-2.5 size-3 -translate-y-1/2 text-zinc-400" />
-          <Input
-            className="h-7 border-0 bg-zinc-50 pl-7 text-[11px] shadow-none"
-            placeholder="Search blocks...  ⌘ K"
-          />
-        </div>
-      )}
-      {!rail && (
-        <div className="mb-3 grid grid-cols-2 rounded-md bg-zinc-100 p-0.5">
-          <Button aria-pressed={library === "blocks"} className="h-7 text-[11px] aria-pressed:bg-white aria-pressed:text-zinc-950 aria-pressed:shadow-sm" onClick={() => setLibrary("blocks")} size="sm" type="button" variant="ghost">Blocks</Button>
-          <Button aria-pressed={library === "sections"} className="h-7 text-[11px] aria-pressed:bg-white aria-pressed:text-zinc-950 aria-pressed:shadow-sm" onClick={() => setLibrary("sections")} size="sm" type="button" variant="ghost">Sections</Button>
-        </div>
-      )}
-      {(rail || library === "blocks") ? (
-        <div className={rail ? "flex gap-2" : "grid grid-cols-2 gap-2"}>
-          {quickBlocks.map((block) => {
+    <div className="p-4">
+      <div className="relative mb-3">
+        <Search className="absolute top-1/2 left-2.5 size-3 -translate-y-1/2 text-zinc-400" />
+        <Input
+          aria-label="Search Quick insert"
+          className="h-7 border-0 bg-zinc-50 pl-7 text-[11px] shadow-none"
+          onChange={(event) => setQuery(event.currentTarget.value)}
+          placeholder={library === "blocks" ? "Search blocks..." : "Search sections..."}
+          type="search"
+          value={query}
+        />
+      </div>
+      <div className="mb-3 grid grid-cols-2 rounded-md bg-zinc-100 p-0.5">
+        <Button aria-pressed={library === "blocks"} className="h-7 text-[11px] aria-pressed:bg-white aria-pressed:text-zinc-950 aria-pressed:shadow-sm" onClick={() => setLibrary("blocks")} size="sm" type="button" variant="ghost">Blocks</Button>
+        <Button aria-pressed={library === "sections"} className="h-7 text-[11px] aria-pressed:bg-white aria-pressed:text-zinc-950 aria-pressed:shadow-sm" onClick={() => setLibrary("sections")} size="sm" type="button" variant="ghost">Sections</Button>
+      </div>
+      {library === "blocks" ? (
+        <div className="grid grid-cols-2 gap-2">
+          {blocks.map((block) => {
             const Icon = block.icon;
             const item: QuickInsertItem = { source: "block", type: block.id };
             return (
               <Button
-                className={
-                  "h-auto cursor-grab border-zinc-200 bg-white p-0 font-normal text-zinc-900 shadow-none transition hover:border-orange-300 hover:bg-orange-50 active:cursor-grabbing disabled:cursor-not-allowed " +
-                  (rail ? "w-24" : "")
-                }
+                className={`h-auto border-zinc-200 bg-white p-0 font-normal text-zinc-900 shadow-none transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-not-allowed ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
                 disabled={!actions.hasPage}
-                draggable={actions.hasPage}
+                draggable={draggable && actions.hasPage}
                 key={block.id}
                 onClick={() => actions.insertItem(item)}
                 onDragStart={(event) => beginDrag(event, item)}
                 variant="outline"
               >
-                <span
-                  className={
-                    rail
-                      ? "flex items-center justify-center gap-2 px-2 py-2"
-                      : "grid place-items-center gap-1.5 py-3"
-                  }
-                >
+                <span className="grid place-items-center gap-1.5 py-3">
                   <Icon className="size-4 text-zinc-500" />
                   <span className="text-[11px]">{block.label}</span>
                 </span>
@@ -424,14 +419,14 @@ function QuickInsert({ actions, rail = false, scrolled = false }: { actions: Edi
         </div>
       ) : (
         <div className="grid gap-1.5">
-          {sectionPresets.map((section) => {
+          {sections.map((section) => {
             const Icon = sectionPresetIcons[section.id] ?? LayoutTemplate;
             const item: QuickInsertItem = { source: "preset", preset: section };
             return (
               <Button
-                className="h-auto cursor-grab justify-start border-zinc-200 bg-white px-2.5 py-2 text-left font-normal text-zinc-900 shadow-none hover:border-orange-300 hover:bg-orange-50 active:cursor-grabbing disabled:cursor-not-allowed"
+                className={`h-auto justify-start border-zinc-200 bg-white px-2.5 py-2 text-left font-normal text-zinc-900 shadow-none hover:border-orange-300 hover:bg-orange-50 disabled:cursor-not-allowed ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
                 disabled={!actions.hasPage}
-                draggable={actions.hasPage}
+                draggable={draggable && actions.hasPage}
                 key={section.id}
                 onClick={() => actions.insertItem(item)}
                 onDragStart={(event) => beginDrag(event, item)}
@@ -447,7 +442,10 @@ function QuickInsert({ actions, rail = false, scrolled = false }: { actions: Edi
           })}
         </div>
       )}
-      {!rail && (
+      {(library === "blocks" ? blocks : sections).length === 0 && (
+        <p className="mt-3 text-xs text-zinc-500" role="status">No matching {library}.</p>
+      )}
+      {(!actions.hasPage || draggable) && (
         <p className="mt-3 flex items-center gap-1.5 text-[10px] text-zinc-500">
           {actions.hasPage ? <><GripVertical className="size-3" /> Drag {library === "blocks" ? "a block" : "a section"} onto your page</> : "Add a page before inserting blocks or sections."}
         </p>
@@ -455,7 +453,7 @@ function QuickInsert({ actions, rail = false, scrolled = false }: { actions: Edi
     </div>
   );
 
-  return rail ? items : (
+  return (
     <section className="min-h-full">
       <div
         className={
@@ -468,6 +466,18 @@ function QuickInsert({ actions, rail = false, scrolled = false }: { actions: Edi
       </div>
       {items}
     </section>
+  );
+}
+
+function QuickInsertPanel({ actions, draggable = true }: { actions: EditorActions; draggable?: boolean }) {
+  const [scrolled, setScrolled] = useState(false);
+  return (
+    <ScrollArea className="h-full" viewportProps={{
+      onScroll: (event) => setScrolled(event.currentTarget.scrollTop > 0),
+      style: { scrollPaddingTop: "2.5rem" },
+    }}>
+      <QuickInsert actions={actions} draggable={draggable} scrolled={scrolled} />
+    </ScrollArea>
   );
 }
 
@@ -619,6 +629,7 @@ function LayerDeleteDialog({
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
   if (!dialog) return null;
 
   return (
@@ -626,13 +637,13 @@ function LayerDeleteDialog({
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-[80] bg-zinc-950/25 backdrop-blur-[1px]" />
         <Dialog.Viewport className="fixed inset-0 z-[81] grid place-items-center p-4">
-          <Dialog.Popup className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-5 shadow-2xl outline-none">
+          <Dialog.Popup initialFocus={cancelRef} className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-5 shadow-2xl outline-none">
             <Dialog.Title className="text-base font-semibold text-zinc-950">Delete layer?</Dialog.Title>
             <Dialog.Description className="mt-1.5 text-sm leading-5 text-zinc-500">
               Delete {dialog.label}{dialog.hasChildren ? " and all its descendants" : ""}? You can undo this change.
             </Dialog.Description>
             <div className="mt-5 flex justify-end gap-2">
-              <Button onClick={onClose} type="button" variant="outline">Cancel</Button>
+              <Button onClick={onClose} ref={cancelRef} type="button" variant="outline">Cancel</Button>
               <Button className="bg-red-600 text-white hover:bg-red-700" onClick={onConfirm} type="button">Delete layer</Button>
             </div>
           </Dialog.Popup>
@@ -739,7 +750,7 @@ function LayerTreeItem({
   icon: LucideIcon;
   label: string;
   nodeId: string;
-  onDelete: () => void;
+  onDelete: (trigger: HTMLButtonElement) => void;
   onDragStart: (event: DragEvent<HTMLDivElement>) => void;
   onMove: () => void;
   onSelect: () => void;
@@ -786,6 +797,7 @@ function LayerTreeItem({
       <Button
         aria-current={active ? "true" : undefined}
         aria-description={inheritedHidden ? "Hidden by a parent layer" : undefined}
+        data-layer-select=""
         className={
           "h-full min-w-0 flex-1 justify-start gap-2 rounded-md px-1 text-left text-xs font-normal hover:bg-transparent " +
           (active ? "font-medium text-orange-600 group-hover:text-zinc-950 hover:text-zinc-950" : "text-zinc-700 hover:text-zinc-700")
@@ -795,7 +807,7 @@ function LayerTreeItem({
         variant="ghost"
       >
         <Icon className="size-3.5 shrink-0" />
-        <span className={visuallyHidden ? "truncate text-zinc-400 line-through" : "truncate"}>{label}</span>
+        <span className={visuallyHidden ? "truncate text-zinc-400 line-through" : "truncate"} title={label}>{label}</span>
       </Button>
       <div className="mr-1 flex shrink-0 items-center gap-0.5">
         <Button
@@ -827,7 +839,7 @@ function LayerTreeItem({
           className={"size-5 bg-transparent hover:text-red-600 focus:opacity-100 " + (active ? "text-orange-600 opacity-60 hover:bg-orange-200 group-hover:opacity-100" : "text-zinc-400 opacity-0 hover:bg-red-50 group-hover:opacity-100")}
           onClick={(event) => {
             event.stopPropagation();
-            onDelete();
+            onDelete(event.currentTarget);
           }}
           size="icon-xs"
           type="button"
@@ -840,8 +852,9 @@ function LayerTreeItem({
   );
 }
 
-function Layers({ actions, drag, ids, inheritedHidden = false, onMove }: {
+function Layers({ actions, depth = 0, drag, ids, inheritedHidden = false, onMove }: {
   actions: EditorActions;
+  depth?: number;
   drag: ReturnType<typeof useLayerDrag>;
   ids: string[];
   inheritedHidden?: boolean;
@@ -869,7 +882,7 @@ function Layers({ actions, drag, ids, inheritedHidden = false, onMove }: {
               inheritedHidden={inheritedHidden}
               label={label}
               nodeId={id}
-              onDelete={() => actions.requestLayerDelete(node)}
+              onDelete={(trigger) => actions.requestLayerDelete(node, trigger)}
               onDragStart={(event) => drag.startDrag(event, id)}
               onMove={() => onMove(id)}
               onSelect={() => actions.choose(node, "layers")}
@@ -879,8 +892,8 @@ function Layers({ actions, drag, ids, inheritedHidden = false, onMove }: {
               visible={node.visible}
             />
             {!collapsed && node.childIds.length > 0 && (
-              <div className="ml-5 border-l border-zinc-200 pl-1.5">
-                <Layers actions={actions} drag={drag} ids={node.childIds} inheritedHidden={inheritedHidden || !node.visible} onMove={onMove} />
+              <div className={depth < 2 ? "ml-5 border-l border-zinc-200 pl-1.5" : depth < 4 ? "ml-1 border-l border-zinc-200 pl-0.5" : ""}>
+                <Layers actions={actions} depth={depth + 1} drag={drag} ids={node.childIds} inheritedHidden={inheritedHidden || !node.visible} onMove={onMove} />
               </div>
             )}
           </div>
@@ -914,7 +927,7 @@ function LayersPanel({ actions }: { actions: EditorActions }) {
             (scrolled ? "shadow-[0_4px_8px_rgba(24,24,27,0.12)]" : "shadow-none")
           }
         >
-          <span>Layers</span>
+          <h2 data-layers-heading tabIndex={-1}>Layers</h2>
           <span role="status" className="ml-auto min-w-0 truncate text-right text-[10px] font-normal text-red-700" title={drag.drop?.reason ?? undefined}>
             {drag.drop?.reason}
           </span>
@@ -950,20 +963,18 @@ function LayersPanel({ actions }: { actions: EditorActions }) {
   );
 }
 
-function CompactLayers({ actions }: { actions: EditorActions }) {
+function CompactPanel({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: ReactNode }) {
   return (
     <Dialog.Root>
-      <Dialog.Trigger render={<Button aria-label="Open Layers" size="icon-sm" variant="ghost" />}>
-        <ListFilter className="size-4" />
+      <Dialog.Trigger render={<Button aria-label={`Open ${title}`} size="icon-sm" variant="ghost" />}>
+        <Icon className="size-4" />
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-[70] bg-zinc-950/25" />
         <Dialog.Viewport className="fixed inset-0 z-[71] grid place-items-center p-4">
           <Dialog.Popup className="flex h-[min(70dvh,30rem)] w-full max-w-sm flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl outline-none">
-            <Dialog.Title className="sr-only">Layers</Dialog.Title>
-            <div className="min-h-0 flex-1">
-              <LayersPanel actions={actions} key={actions.page?.id} />
-            </div>
+            <Dialog.Title className="sr-only">{title}</Dialog.Title>
+            <div className="min-h-0 flex-1">{children}</div>
             <div className="flex justify-end border-t border-zinc-100 p-2">
               <Dialog.Close render={<Button size="sm" variant="outline" />}>Close</Dialog.Close>
             </div>
@@ -992,7 +1003,6 @@ function Navigator({
   selectedPageId: string | null;
 }) {
   const [pagesScrolled, setPagesScrolled] = useState(false);
-  const [quickInsertScrolled, setQuickInsertScrolled] = useState(false);
 
   return (
     <aside className="flex h-full w-full min-w-0 flex-col bg-white">
@@ -1112,11 +1122,7 @@ function Navigator({
         </ResizablePanel>
         <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
         <ResizablePanel defaultSize="35" id="quick-insert" minSize="190px">
-          <ScrollArea className="h-full" viewportProps={{
-            onScroll: (event) => setQuickInsertScrolled(event.currentTarget.scrollTop > 0),
-          }}>
-            <QuickInsert actions={actions} scrolled={quickInsertScrolled} />
-          </ScrollArea>
+          <QuickInsertPanel actions={actions} />
         </ResizablePanel>
       </ResizablePanelGroup>
       <div className="flex items-center gap-2 border-t border-zinc-200 px-4 py-3 text-[10px] text-zinc-500">
@@ -1201,10 +1207,12 @@ function CustomViewportForm({ onCancel, onViewportChange, viewport }: { onCancel
 }
 
 function CanvasToolbar({
+  pageMenu,
   onViewportChange,
   page,
   viewport,
 }: {
+  pageMenu?: ReactNode;
   onViewportChange: (viewport: CanvasViewport) => void;
   page: BuilderPage | null;
   viewport: CanvasViewport;
@@ -1225,8 +1233,8 @@ function CanvasToolbar({
   ] as const;
 
   return (
-    <div className="relative flex h-12 items-center justify-between border-b border-zinc-200 bg-white px-4 text-xs">
-      <div className="flex min-w-0 items-center gap-1.5 text-zinc-600"><PageIcon className="size-3.5 shrink-0" /> <span className="truncate">{page?.name ?? "No page selected"}</span> <ChevronDown className="size-3 shrink-0" /></div>
+    <div className="relative flex h-12 shrink-0 items-center justify-between border-b border-zinc-200 bg-white px-4 text-xs">
+      {pageMenu ?? <div className="flex min-w-0 items-center gap-1.5 text-zinc-600"><PageIcon className="size-3.5 shrink-0" /> <span className="truncate">{page?.name ?? "No page selected"}</span> <ChevronDown className="size-3 shrink-0" /></div>}
       <div className="flex items-center gap-1 rounded-md bg-zinc-50 p-1">
         {viewportButtons.map(({ kind, label, icon: ViewportIcon }) => {
           const active = viewport.kind === kind;
@@ -1269,7 +1277,7 @@ function CanvasToolbar({
           <ChevronDown className="size-3" />
         </Button>
       </div>
-      <div className="flex items-center gap-3 text-zinc-500"><Code2 className="size-3.5" /><MoreHorizontal className="size-4" /></div>
+      <div className="hidden items-center gap-3 text-zinc-500 sm:flex"><Code2 className="size-3.5" /><MoreHorizontal className="size-4" /></div>
       {customOpen && (
         <CustomViewportForm key={`${viewport.kind}-${viewport.width}`} onCancel={() => setCustomOpen(false)} onViewportChange={onViewportChange} viewport={viewport} />
       )}
@@ -1405,6 +1413,7 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
       label={field === "buttonLabel" ? "Button label" : nodeDetails(node).label}
       multiline={field !== "buttonLabel"}
       onCommit={updateContent}
+      selected={actions.selectedNode?.id === node.id}
       style={node.type === "button" && surfaceOnContent ? { ...surfaceStyle, ...textStyle } : textStyle}
       value={content[field]}
     />
@@ -1489,7 +1498,7 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
     case "stack":
       return frame("bg-white p-8", <Card className="border border-zinc-200 shadow-none"><CardHeader><CardTitle>{text("title", "span", "block")}</CardTitle><CardDescription>{text("body", "span", "block")}</CardDescription></CardHeader><CardContent><div className="h-2 w-3/4 rounded-full bg-zinc-200" /></CardContent></Card>);
     case "grid":
-      return frame("bg-white p-6", <><div className="grid grid-cols-3 gap-4">{["Discover", "Create", "Launch"].map((label, index) => <Card className="border border-zinc-200 bg-zinc-50 shadow-none" key={label}><CardContent className="p-5"><span className="text-xs text-zinc-400">0{index + 1}</span><p className="mt-6 text-sm font-semibold text-zinc-900">{label}</p></CardContent></Card>)}</div></>);
+      return frame("min-w-0 bg-white p-6");
     case "heading":
       return frame("rounded-xl bg-white", text("title", "heading", "px-8 py-10 text-4xl font-semibold tracking-[-0.04em] text-zinc-900 max-w-[52rem]"));
     case "text":
@@ -1522,7 +1531,7 @@ function breakpointForWidth(width: number): Breakpoint {
   return width <= 768 ? "tablet" : "base";
 }
 
-function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }: { actions: EditorActions; artboardHeight: number; artboardRef: React.RefObject<HTMLElement | null>; isResizing: boolean; viewport: CanvasViewport }) {
+function Artboard({ actions, artboardRef, isResizing, viewport }: { actions: EditorActions; artboardRef: React.RefObject<HTMLElement | null>; isResizing: boolean; viewport: CanvasViewport }) {
   const compactPreview = viewport.width < 768;
   const narrowPreview = viewport.width < 510;
   const browserHeaderHeight = compactPreview ? 48 : 64;
@@ -1530,14 +1539,17 @@ function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }
   const { indicator, handlers, startMove } = useCanvasDrop(page, actions.insertDrag, actions.insertItem, actions.moveCanvasNode);
   const [moveDialog, setMoveDialog] = useState<{ nodeId: string; open: boolean } | null>(null);
   const move = { start: startMove, openDialog: (nodeId: string) => setMoveDialog({ nodeId, open: true }) };
-  const hasVisibleContent = page?.rootIds.some((id) => page.nodes[id].visible);
   const breakpoint = breakpointForWidth(viewport.width);
+  const hasVisibleContent = page?.rootIds.some((id) => {
+    const node = page.nodes[id];
+    return node.visible && resolveStyles(node, breakpoint).display !== "none";
+  });
 
   return (
     <article
       className={"relative min-h-[640px] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_12px_30px_rgba(24,24,27,0.08)] transition-[width] ease-out motion-reduce:transition-none " + (isResizing ? "duration-0" : "duration-300")}
       ref={artboardRef}
-      style={{ minHeight: artboardHeight, width: viewport.width }}
+      style={{ minHeight: defaultCanvasHeight, width: viewport.width }}
     >
       <header className={(compactPreview ? "h-12 px-4 " : "h-16 px-6 ") + "relative flex items-center border-b border-zinc-200 bg-zinc-50 text-zinc-400"}>
         <div className={"flex items-center " + (compactPreview ? "gap-1" : "gap-1.5")}><span className={(compactPreview ? "size-2 " : "size-3 ") + "rounded-full bg-red-400"} /><span className={(compactPreview ? "size-2 " : "size-3 ") + "rounded-full bg-amber-400"} /><span className={(compactPreview ? "size-2 " : "size-3 ") + "rounded-full bg-emerald-400"} /></div>
@@ -1550,7 +1562,7 @@ function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }
       </header>
       <section
         className={"relative bg-white text-center " + (hasVisibleContent ? "" : "grid place-items-center")}
-        style={{ minHeight: artboardHeight - browserHeaderHeight }}
+        style={{ minHeight: defaultCanvasHeight - browserHeaderHeight - 2 }}
         {...handlers}
       >
         {hasVisibleContent ? (
@@ -1602,23 +1614,25 @@ function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }
 }
 
 function InspectorSection({ title, children }: { title: string; children: ReactNode }) {
-  return <section className="space-y-3 border-b border-zinc-200 p-4"><Button className="h-6 w-full justify-between px-0 text-xs font-semibold hover:bg-transparent" variant="ghost">{title}<ChevronDown className="size-3.5 text-zinc-500" /></Button>{children}</section>;
+  return <section className="space-y-3 border-b border-zinc-200 p-4"><h2 className="text-xs font-semibold">{title}</h2>{children}</section>;
 }
 
-function Inspector({ actions, breakpoint }: { actions: EditorActions; breakpoint: Breakpoint }) {
+function Inspector({ actions, breakpoint, compact = false }: { actions: EditorActions; breakpoint: Breakpoint; compact?: boolean }) {
   const { page, selectedNode: node } = actions;
+  const [tab, setTab] = useState("style");
+  const hasSettings = node?.type === "heading" || node?.type === "input";
   const showLayout = !!node && node.type !== "text";
-  const showTypography = !!node && ownsText(node);
+  const showTypography = !!node && node.type !== "section" && ownsText(node);
   const showAppearance = !!node && ownsSurface(node);
   return (
     <aside className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-white">
-      <Tabs className="min-h-0 flex-1 !gap-0" defaultValue="style">
-        <div className="flex h-12 shrink-0 items-center border-b border-zinc-200 px-4 text-xs"><TabsList className="!grid !h-full !w-40 grid-cols-2 !gap-0 !p-0" variant="line"><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs data-active:text-zinc-950 after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="style">Style</TabsTrigger><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="settings">Settings</TabsTrigger></TabsList><MoreHorizontal className="ml-auto size-4 text-zinc-500" /></div>
+      <Tabs className="min-h-0 flex-1 !gap-0" onValueChange={(value) => setTab(String(value))} value={hasSettings ? tab : "style"}>
+        <div className="flex h-12 shrink-0 items-center border-b border-zinc-200 px-4 text-xs"><TabsList className="!grid !h-full !w-40 grid-cols-2 !gap-0 !p-0" variant="line"><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs data-active:text-zinc-950 after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="style">Style</TabsTrigger><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600 disabled:opacity-40" disabled={!hasSettings} value="settings">Settings</TabsTrigger></TabsList></div>
         <TabsContent className="min-h-0" value="style">
           <ResizablePanelGroup className="min-h-0 flex-1" id="inspector-sections" orientation="vertical">
             {page && node && showLayout && (
               <>
-                <ResizablePanel defaultSize="38" id="layout" minSize="210px">
+                <ResizablePanel defaultSize="38" id="layout" minSize={compact ? "56px" : "210px"}>
                   <LayoutInspector
                     breakpoint={breakpoint}
                     key={`${page.id}:${node.id}:${breakpoint}`}
@@ -1632,7 +1646,7 @@ function Inspector({ actions, breakpoint }: { actions: EditorActions; breakpoint
             )}
             {page && node && showTypography && (
               <>
-                <ResizablePanel defaultSize="42" id="typography" minSize="240px">
+                <ResizablePanel defaultSize="42" id="typography" minSize={compact ? "56px" : "240px"}>
                   <TypographyInspector
                     breakpoint={breakpoint}
                     key={`${page.id}:${node.id}:${breakpoint}`}
@@ -1645,7 +1659,7 @@ function Inspector({ actions, breakpoint }: { actions: EditorActions; breakpoint
               </>
             )}
             {page && node && showAppearance && (
-              <ResizablePanel defaultSize="20" id="appearance" minSize="120px">
+              <ResizablePanel defaultSize="20" id="appearance" minSize={compact ? "56px" : "120px"}>
                 <AppearanceInspector
                   breakpoint={breakpoint}
                   key={`${page.id}:${node.id}:${breakpoint}`}
@@ -1689,7 +1703,7 @@ function Inspector({ actions, breakpoint }: { actions: EditorActions; breakpoint
   );
 }
 
-function Canvas({ actions, compact, onViewportChange, page, variant, viewport }: { actions: EditorActions; compact: boolean; onViewportChange: (viewport: CanvasViewport) => void; page: BuilderPage | null; variant: VariantKey; viewport: CanvasViewport }) {
+function Canvas({ actions, compact, onViewportChange, page, pageMenu, variant, viewport }: { actions: EditorActions; compact: boolean; onViewportChange: (viewport: CanvasViewport) => void; page: BuilderPage | null; pageMenu?: ReactNode; variant: VariantKey; viewport: CanvasViewport }) {
   const artboardRef = useRef<HTMLElement>(null);
   const canvasStageRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement>(null);
@@ -1928,7 +1942,7 @@ function Canvas({ actions, compact, onViewportChange, page, variant, viewport }:
 
   return (
     <main className={"flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#f7f6f4] " + (isFullscreen ? "fixed inset-0 z-[60] h-screen w-screen" : "")}>
-      <CanvasToolbar onViewportChange={onViewportChange} page={page} viewport={viewport} />
+      <CanvasToolbar onViewportChange={onViewportChange} page={page} pageMenu={pageMenu} viewport={viewport} />
       <ScrollArea
         className="min-h-0 flex-1"
         horizontal
@@ -1949,7 +1963,7 @@ function Canvas({ actions, compact, onViewportChange, page, variant, viewport }:
               <div className="mb-2 flex shrink-0 justify-between text-[10px] text-zinc-400"><span>{page.name} · {viewport.label}</span><span>{viewport.width} px</span></div>
               <div className={"relative transition-[width,height] ease-out motion-reduce:transition-none " + widthTransition} style={{ height: scaledHeight, width: scaledWidth }}>
                 <div className="absolute top-0 left-0 origin-top-left transition-transform duration-300 ease-out will-change-transform motion-reduce:transition-none" style={{ transform: `scale(${zoomScale})`, width: viewport.width }}>
-                  <Artboard actions={actions} artboardHeight={artboardHeight} artboardRef={artboardRef} isResizing={isResizingCanvas} key={actions.page?.id} viewport={viewport} />
+                  <Artboard actions={actions} artboardRef={artboardRef} isResizing={isResizingCanvas} key={actions.page?.id} viewport={viewport} />
                 </div>
                 <div
                   aria-label="Resize canvas width"
@@ -2071,8 +2085,17 @@ function Canvas({ actions, compact, onViewportChange, page, variant, viewport }:
       </footer>
       {(compact || variant === "c") && (
         <div className="fixed right-4 bottom-14 z-20 flex items-center gap-1 rounded-xl border border-zinc-200 bg-white p-2 shadow-lg">
-          <CompactLayers actions={actions} />
-          <QuickInsert actions={actions} rail />
+          <CompactPanel icon={ListFilter} title="Layers">
+            <LayersPanel actions={actions} key={actions.page?.id} />
+          </CompactPanel>
+          <CompactPanel icon={Plus} title="Quick insert">
+            <QuickInsertPanel actions={actions} draggable={false} />
+          </CompactPanel>
+          {compact && variant !== "b" && (
+            <CompactPanel icon={Settings2} title="Inspector">
+              <Inspector actions={actions} breakpoint={breakpointForWidth(viewport.width)} compact />
+            </CompactPanel>
+          )}
         </div>
       )}
     </main>
@@ -2118,13 +2141,33 @@ function FormaVariant({
 }) {
   const showNavigator = !compact && variant !== "c";
   const showInspector = !compact && variant !== "b";
+  const PageIcon = page?.icon ?? FileText;
+  const pageMenu = !showNavigator && (
+    <DropdownMenu>
+      <DropdownMenuTrigger aria-label="Switch page" className="flex min-w-0 items-center gap-1.5 rounded text-zinc-600 focus-visible:outline-orange-500">
+        <PageIcon className="size-3.5 shrink-0" /> <span className="truncate">{page?.name ?? "No page selected"}</span> <ChevronDown className="size-3 shrink-0" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-[60dvh] w-44 overflow-y-auto">
+        {pages.map((page) => (
+          <DropdownMenuItem key={page.id} onClick={() => onSelectPage(page)}>{page.name}</DropdownMenuItem>
+        ))}
+        {pages.length > 0 && <DropdownMenuSeparator />}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Add page</DropdownMenuLabel>
+          {pagePresets.map((preset) => (
+            <DropdownMenuItem key={preset.id} onClick={() => onAddPage(preset)}>{preset.title}</DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
   return (
     <div className="builder-light-theme h-screen overflow-hidden bg-white text-zinc-900">
       <ProjectBar canRedo={canRedo} canUndo={canUndo} onRedo={onRedo} onUndo={onUndo} saveStatus={saveStatus} />
       <div className="h-[calc(100vh-4rem)] min-h-0 overflow-hidden">
         <ResizablePanelGroup className="h-full min-h-0" id={`workspace-${variant}`} orientation="horizontal">
           {showNavigator && <><ResizablePanel defaultSize="244px" id="navigator" maxSize="380px" minSize="200px"><Navigator actions={actions} onAddPage={onAddPage} onDeletePage={onDeletePage} onRenamePage={onRenamePage} onSelectPage={onSelectPage} pages={pages} selectedPageId={selectedPageId} /></ResizablePanel><ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle /></>}
-          <ResizablePanel defaultSize={compact ? "100" : "60"} id="canvas" minSize={compact ? "280px" : "560px"}><Canvas actions={actions} compact={compact} onViewportChange={onViewportChange} page={page} variant={variant} viewport={viewport} /></ResizablePanel>
+          <ResizablePanel defaultSize={compact ? "100" : "60"} id="canvas" minSize={compact ? "280px" : "440px"}><Canvas actions={actions} compact={compact} onViewportChange={onViewportChange} page={page} pageMenu={pageMenu || undefined} variant={variant} viewport={viewport} /></ResizablePanel>
           {showInspector && <><ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle /><ResizablePanel defaultSize="288px" id="inspector" maxSize="420px" minSize="240px"><Inspector actions={actions} breakpoint={breakpointForWidth(viewport.width)} /></ResizablePanel></>}
         </ResizablePanelGroup>
       </div>
@@ -2160,7 +2203,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
   const [timeline, setTimeline] = useState<DocumentHistory>({ document: emptyDocument, past: [], future: [] });
   const { document, past, future } = timeline;
   const [loadStatus, setLoadStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [saveResult, setSaveResult] = useState<{ document: SiteDocument; error: boolean } | null>(null);
+  const [saveResult, setSaveResult] = useState<{ document: SiteDocument; pageId: string | null; error: boolean } | null>(null);
   const [activePageId, setActivePageId] = useState<string | null>(null);
   const [layerSelection, setLayerSelection] = useState<LayerSelection | null>(null);
   const [collapsedLayers, setCollapsedLayers] = useState<Record<string, string[]>>({});
@@ -2275,7 +2318,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
 
   function confirmLayerDelete() {
     if (!page || layerDeleteDialog?.pageId !== page.id) {
-      setLayerDeleteDialog(null);
+      closeLayerDelete();
       return;
     }
     const node = page.nodes[layerDeleteDialog.layerId];
@@ -2288,8 +2331,25 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
         if (!currentPage || !Object.hasOwn(currentPage.nodes, node.id)) return document;
         return applyDocumentOperation(document, { type: "node.delete", pageId: page.id, nodeId: node.id });
       });
+      closeLayerDelete({ fallback });
+      return;
     }
+    closeLayerDelete();
+  }
+
+  function closeLayerDelete(deleted?: { fallback: string | null }) {
+    const trigger = layerDeleteDialog?.trigger;
+    const layers = trigger?.closest('[data-slot="scroll-area-viewport"]');
     setLayerDeleteDialog(null);
+    requestAnimationFrame(() => {
+      if (!deleted) {
+        trigger?.focus({ preventScroll: true });
+        return;
+      }
+      const selector = deleted.fallback === null ? "[data-layers-heading]"
+        : `[data-layer-node-id="${CSS.escape(deleted.fallback)}"] [data-layer-select]`;
+      layers?.querySelector<HTMLElement>(selector)?.focus({ preventScroll: true });
+    });
   }
 
   function toggleLayerCollapse(id: string) {
@@ -2371,7 +2431,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
       error = true;
     }
     let active = true;
-    queueMicrotask(() => { if (active) setSaveResult({ document, error }); });
+    queueMicrotask(() => { if (active) setSaveResult({ document, pageId: selectedPageId, error }); });
     return () => { active = false; };
   }, [document, loadStatus, selectedPageId]);
 
@@ -2418,9 +2478,9 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
     selection: selectedNode ? layerSelection : null,
     expandLayer: (id) => { if (page) expandLayers(page.id, [id]); },
     isLayerCollapsed: (id) => page !== null && (collapsedLayers[page.id] ?? []).includes(id),
-    requestLayerDelete: (node) => {
+    requestLayerDelete: (node, trigger) => {
       if (page) setLayerDeleteDialog({
-        layerId: node.id, label: nodeDetails(node).label, hasChildren: node.childIds.length > 0, pageId: page.id,
+        layerId: node.id, label: nodeDetails(node).label, hasChildren: node.childIds.length > 0, pageId: page.id, trigger,
       });
     },
     toggleLayerVisibility: (node) => {
@@ -2454,7 +2514,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
   };
   const saveStatus = loadStatus === "error" ? "Saved pages could not be loaded. Autosave is paused."
     : loadStatus === "loading" ? "Loading saved pages…"
-    : saveResult?.document !== document ? "Saving…"
+    : saveResult?.document !== document || saveResult.pageId !== selectedPageId ? "Saving…"
     : saveResult.error ? "Could not save changes to browser storage."
     : "All changes saved";
   const dialogPage = pages.find((page) => page.id === pageDialog?.pageId) ?? null;
@@ -2480,7 +2540,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
         viewport={viewport}
       />
       <PageManagementDialog dialog={pageDialog} draftName={pageNameDraft} onClose={() => setPageDialog(null)} onConfirm={confirmPageDialog} onDraftNameChange={setPageNameDraft} page={dialogPage} />
-      <LayerDeleteDialog dialog={layerDeleteDialog} onClose={() => setLayerDeleteDialog(null)} onConfirm={confirmLayerDelete} />
+      <LayerDeleteDialog dialog={layerDeleteDialog} onClose={() => closeLayerDelete()} onConfirm={confirmLayerDelete} />
       {showVariantSwitcher && <PrototypeSwitcher current={current} onChange={changeVariant} />}
     </>
   );
