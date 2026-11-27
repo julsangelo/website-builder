@@ -97,7 +97,7 @@ export type DocumentOperation =
   | { type: "node.move"; pageId: string; nodeId: string; parentId: string | null; index: number }
   | { type: "node.updateContent"; pageId: string; nodeId: string; content: Partial<NodeContent> }
   | { type: "node.updateStyle"; pageId: string; nodeId: string; breakpoint: Breakpoint; styles: Partial<StyleValues> }
-  | { type: "node.resetStyle"; pageId: string; nodeId: string; breakpoint: Breakpoint; property: keyof StyleValues }
+  | { type: "node.resetStyle"; pageId: string; nodeId: string; breakpoint: Breakpoint; property: keyof StyleValues | readonly (keyof StyleValues)[] }
   | { type: "node.setVisibility"; pageId: string; nodeId: string; visible: boolean }
   | { type: "node.delete"; pageId: string; nodeId: string };
 
@@ -286,8 +286,9 @@ export function applyDocumentOperation(document: SiteDocument, operation: Docume
       const current = node.styles[breakpoint] ?? {};
       const next = { ...current };
       if (operation.type === "node.resetStyle") {
-        if (!Object.hasOwn(current, operation.property)) return document;
-        delete next[operation.property];
+        const properties = typeof operation.property === "string" ? [operation.property] : operation.property;
+        if (!properties.some((key) => Object.hasOwn(current, key))) return document;
+        for (const key of properties) delete next[key];
       } else {
         const changes = Object.entries(operation.styles).filter(([key, value]) =>
           value !== undefined && current[key as keyof StyleValues] !== value);

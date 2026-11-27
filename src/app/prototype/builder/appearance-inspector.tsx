@@ -1,10 +1,8 @@
 import { useId, type ReactNode } from "react";
-import { RotateCcw } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { resolveStyles, type Breakpoint, type EditorNode, type StyleValues } from "@/lib/builder-document";
 import { objectFits } from "./preview-image";
-import { CssValueInput, StyleInspectorSection } from "./style-inspector-controls";
+import { AdvancedControls, CssValueInput, InspectorField, StyleInspectorSection } from "./style-inspector-controls";
 
 const surfaceProperties = [
   "backgroundColor", "backgroundImage", "opacity", "borderWidth", "borderStyle", "borderColor",
@@ -70,22 +68,9 @@ export function AppearanceInspector({ breakpoint, node, onChange, onReset }: {
   function field(property: AppearanceProperty, label: string, render: (fieldId: string) => ReactNode) {
     const fieldId = `${id}-${property}`;
     return (
-      <div className="grid grid-cols-[76px_minmax(0,1fr)_28px] items-start gap-2">
-        <label className="pt-2 text-[11px] text-zinc-600" htmlFor={fieldId}>{label}</label>
+      <InspectorField id={fieldId} label={label} properties={[property]} node={node} breakpoint={breakpoint} onReset={() => onReset(property)}>
         {render(fieldId)}
-        {Object.hasOwn(node.styles[breakpoint] ?? {}, property) && (
-          <Button
-            aria-label={`Reset ${label}`}
-            className="size-7 self-start text-zinc-500 hover:text-orange-600"
-            onClick={() => onReset(property)}
-            size="icon-sm"
-            title={breakpoint === "base" ? "Reset to default" : "Reset to inherited"}
-            variant="ghost"
-          >
-            <RotateCcw aria-hidden="true" className="size-3" />
-          </Button>
-        )}
-      </div>
+      </InspectorField>
     );
   }
 
@@ -107,7 +92,7 @@ export function AppearanceInspector({ breakpoint, node, onChange, onReset }: {
     const value = String(styles[property] ?? fallback);
     return field(property, label, (fieldId) => (
       <select
-        className="h-8 min-w-0 rounded-lg border border-input bg-zinc-50 px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="h-8 w-full min-w-0 rounded-lg border border-input bg-zinc-50 px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         id={fieldId}
         onChange={(event) => {
           const option = options.find((option) => option === event.target.value);
@@ -126,20 +111,18 @@ export function AppearanceInspector({ breakpoint, node, onChange, onReset }: {
   return (
     <StyleInspectorSection title="Appearance">
       {cssValue("backgroundColor", "Background color", "Enter a CSS color such as #275d38 or transparent.")}
-      {cssValue("backgroundImage", "Background image", "Enter an HTTP(S) URL, a path starting with /, or none.", undefined, normalizeBackgroundImage)}
       {cssValue("opacity", "Opacity", "Enter a number from 0 to 1 or a percentage from 0% to 100%.", "1", normalizeOpacity)}
       {cssValue("borderWidth", "Border width", "Enter a CSS width such as 2px or thin.")}
       {select("borderStyle", "Border style", borderStyles, "solid")}
       {cssValue("borderColor", "Border color", "Enter a CSS color such as #275d38 or currentColor.")}
       {cssValue("borderRadius", "Radius", "Enter a CSS radius such as 12px or 50%.")}
       {cssValue("boxShadow", "Shadow", "Enter a CSS shadow such as 0 4px 12px #0003, or none.")}
-      {select("mixBlendMode", "Blend mode", blendModes, "normal")}
-      {node.type === "image" && (
-        <>
-          {select("objectFit", "Object fit", objectFits, "cover")}
-          {cssValue("objectPosition", "Object position", "Enter a CSS position such as top right or 30% 50%.", "50% 50%")}
-        </>
-      )}
+      {node.type === "image" && select("objectFit", "Object fit", objectFits, "cover")}
+      <AdvancedControls>
+        {cssValue("backgroundImage", "Background image", "Enter an HTTP(S) URL, a path starting with /, or none.", undefined, normalizeBackgroundImage)}
+        {select("mixBlendMode", "Blend mode", blendModes, "normal")}
+        {node.type === "image" && cssValue("objectPosition", "Object position", "Enter a position such as top right or 30% 50%.", "50% 50%")}
+      </AdvancedControls>
     </StyleInspectorSection>
   );
 }

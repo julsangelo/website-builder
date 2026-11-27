@@ -1,14 +1,12 @@
 import { useId } from "react";
-import { RotateCcw } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import {
   resolveStyles,
   type Breakpoint,
   type EditorNode,
   type StyleValues,
 } from "@/lib/builder-document";
-import { CssValueInput, StyleInspectorSection } from "./style-inspector-controls";
+import { AdvancedControls, CssValueInput, InspectorField, StyleInspectorSection } from "./style-inspector-controls";
 
 export function ownsText(node: EditorNode) {
   switch (node.type) {
@@ -87,53 +85,43 @@ export function TypographyInspector({ breakpoint, node, onChange, onReset }: {
   const id = useId();
   const styles = resolveStyles(node, breakpoint);
 
+  function renderField(field: typeof fields[number]) {
+    const { property, label } = field;
+    const fieldId = `${id}-${property}`;
+    const value = styles[property];
+    return (
+      <InspectorField key={property} id={fieldId} label={label} properties={[property]} node={node} breakpoint={breakpoint} onReset={() => onReset(property)}>
+        {"options" in field ? (
+          <select
+            className="h-8 w-full min-w-0 rounded-lg border border-input bg-zinc-50 px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            id={fieldId}
+            onChange={(event) => onChange({ [property]: event.target.value })}
+            value={String(value ?? "")}
+          >
+            <option disabled value="">Default</option>
+            {value !== undefined && !field.options.some(([option]) => option === String(value)) && (
+              <option value={value}>{value}</option>
+            )}
+            {field.options.map(([option, name]) => <option key={option} value={option}>{name}</option>)}
+          </select>
+        ) : (
+          <CssValueInput
+            hint={field.hint}
+            id={fieldId}
+            onChange={(value) => onChange({ [property]: value })}
+            pixelUnits={"pixelUnits" in field && field.pixelUnits}
+            property={property}
+            value={value}
+          />
+        )}
+      </InspectorField>
+    );
+  }
+  const advanced = new Set<TypographyProperty>(["letterSpacing", "textDecorationLine", "textTransform", "whiteSpace"]);
   return (
     <StyleInspectorSection title="Typography">
-      {fields.map((field) => {
-        const { property, label } = field;
-        const fieldId = `${id}-${property}`;
-        const value = styles[property];
-        return (
-          <div className="grid grid-cols-[76px_minmax(0,1fr)_28px] items-start gap-2" key={property}>
-            <label className="pt-2 text-[11px] text-zinc-600" htmlFor={fieldId}>{label}</label>
-            {"options" in field ? (
-              <select
-                className="h-8 min-w-0 rounded-lg border border-input bg-zinc-50 px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                id={fieldId}
-                onChange={(event) => onChange({ [property]: event.target.value })}
-                value={String(value ?? "")}
-              >
-                <option disabled value="">Default</option>
-                {value !== undefined && !field.options.some(([option]) => option === String(value)) && (
-                  <option value={value}>{value}</option>
-                )}
-                {field.options.map(([option, name]) => <option key={option} value={option}>{name}</option>)}
-              </select>
-            ) : (
-              <CssValueInput
-                hint={field.hint}
-                id={fieldId}
-                onChange={(value) => onChange({ [property]: value })}
-                pixelUnits={"pixelUnits" in field && field.pixelUnits}
-                property={property}
-                value={value}
-              />
-            )}
-            {Object.hasOwn(node.styles[breakpoint] ?? {}, property) && (
-              <Button
-                aria-label={`Reset ${label}`}
-                className="size-7 self-start text-zinc-500 hover:text-orange-600"
-                onClick={() => onReset(property)}
-                size="icon-sm"
-                title={breakpoint === "base" ? "Reset to default" : "Reset to inherited"}
-                variant="ghost"
-              >
-                <RotateCcw aria-hidden="true" className="size-3" />
-              </Button>
-            )}
-          </div>
-        );
-      })}
+      {fields.filter((field) => !advanced.has(field.property)).map(renderField)}
+      <AdvancedControls>{fields.filter((field) => advanced.has(field.property)).map(renderField)}</AdvancedControls>
     </StyleInspectorSection>
   );
 }

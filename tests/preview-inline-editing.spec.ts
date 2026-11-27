@@ -1,3 +1,4 @@
+import { openAdvanced } from "./inspector-controls";
 import { expect, test, type Page } from "@playwright/test";
 
 import { buildSection, sectionPresets } from "../src/lib/builder-presets";
@@ -252,12 +253,13 @@ test("Layout changes flex and grid flow while keeping child and Layer order", as
   const wrap = page.getByRole("combobox", { name: "Wrap" });
   const columns = page.getByRole("textbox", { name: "Grid columns" });
   const rows = page.getByRole("textbox", { name: "Grid rows" });
-  const gap = page.getByRole("textbox", { name: "Gap" });
+  const gap = page.getByRole("textbox", { name: "Gap", exact: true });
   const heading = page.getByRole("button", { name: "Layout", exact: true });
   const undo = page.getByRole("button", { name: "Undo", exact: true });
 
   const id = await container.getAttribute("data-node-id");
   await page.locator(`[data-layer-node-id="${id}"]`).getByRole("button", { name: "Content", exact: true }).click();
+  await openAdvanced(page, "Layout");
   await expect(display).toHaveValue("flex");
   await expect(columns).toHaveCount(0);
   await direction.selectOption("row");
@@ -315,14 +317,16 @@ test("Layout overrides inherit across viewports and survive reload and undo", as
   const mobile = page.getByRole("button", { name: "Mobile viewport" });
   const display = page.getByRole("combobox", { name: "Display" });
   const columns = page.getByRole("textbox", { name: "Grid columns" });
-  const gap = page.getByRole("textbox", { name: "Gap" });
+  const gap = page.getByRole("textbox", { name: "Gap", exact: true });
   const resetGap = page.getByRole("button", { name: "Reset Gap", exact: true });
   const undo = page.getByRole("button", { name: "Undo", exact: true });
   const redo = page.getByRole("button", { name: "Redo", exact: true });
 
   await selectSection();
+  await openAdvanced(page, "Layout");
   await expect(gap).toHaveValue("normal");
   await tablet.click();
+  await openAdvanced(page, "Layout");
   await columns.fill("2fr 1fr");
   await gap.fill("24px");
   await expect(section).toHaveCSS("gap", "24px");
@@ -330,14 +334,17 @@ test("Layout overrides inherit across viewports and survive reload and undo", as
   await expect(gap).toHaveAttribute("aria-invalid", "true");
   await expect(section).toHaveCSS("gap", "24px");
   await mobile.click();
+  await openAdvanced(page, "Layout");
   await expect(columns).toHaveValue("2fr 1fr");
   await expect(gap).toHaveValue("24px");
   await expect(resetGap).toHaveCount(0);
   await desktop.click();
+  await openAdvanced(page, "Layout");
   await expect(columns).toHaveValue("repeat(2, minmax(0, 1fr))");
   await expect(section).toHaveCSS("gap", "normal");
 
   await tablet.click();
+  await openAdvanced(page, "Layout");
   await resetGap.click();
   await expect(section).toHaveCSS("gap", "normal");
   await undo.click();
@@ -354,6 +361,7 @@ test("Layout overrides inherit across viewports and survive reload and undo", as
   await page.reload();
   await selectSection();
   await tablet.click();
+  await openAdvanced(page, "Layout");
   await expect(columns).toHaveValue("2fr 1fr");
   await expect(section).toHaveCSS("gap", "24px");
   await resetGap.click();
@@ -361,6 +369,7 @@ test("Layout overrides inherit across viewports and survive reload and undo", as
   await page.reload();
   await selectSection();
   await tablet.click();
+  await openAdvanced(page, "Layout");
   await expect(gap).toHaveValue("normal");
   await expect(resetGap).toHaveCount(0);
 });
@@ -372,6 +381,7 @@ test("Spatial Layout fields resize containers, validate values, and apply positi
   await expect(section).toHaveAttribute("aria-pressed", "true");
   const field = (name: string) => page.getByRole("textbox", { name, exact: true });
 
+  await openAdvanced(page, "Layout");
   await field("Width").fill("340");
   await expect(field("Width")).toHaveAttribute("aria-invalid", "true");
   await expect(section).not.toHaveCSS("width", "340px");
@@ -428,16 +438,19 @@ test("Image Layout overrides fill the padded frame and reset to the wider breakp
   const resetWidth = page.getByRole("button", { name: "Reset Width", exact: true });
 
   await selectImage();
+  await openAdvanced(page, "Layout");
   await expect(page.getByRole("combobox", { name: "Display", exact: true })).toHaveCount(0);
   await width.fill("240px");
   await page.getByRole("textbox", { name: "Padding", exact: true }).fill("12px");
   await expect(surface).toHaveCSS("width", "216px");
   await tablet.click();
+  await openAdvanced(page, "Layout");
   await expect(width).toHaveValue("240px");
   await expect(resetWidth).toHaveCount(0);
   await width.fill("180px");
   await expect(surface).toHaveCSS("width", "156px");
   await mobile.click();
+  await openAdvanced(page, "Layout");
   await expect(width).toHaveValue("180px");
   await expect(resetWidth).toHaveCount(0);
   await width.fill("140px");
@@ -449,6 +462,7 @@ test("Image Layout overrides fill the padded frame and reset to the wider breakp
   await page.reload();
   await selectImage();
   await mobile.click();
+  await openAdvanced(page, "Layout");
   await expect(image).toHaveCSS("width", "140px");
   await resetWidth.click();
   await expect(image).toHaveCSS("width", "180px");
@@ -458,6 +472,7 @@ test("Image Layout overrides fill the padded frame and reset to the wider breakp
   await page.getByRole("button", { name: "Redo", exact: true }).click();
   await expect(image).toHaveCSS("width", "180px");
   await tablet.click();
+  await openAdvanced(page, "Layout");
   await expect(width).toHaveValue("180px");
   await resetWidth.click();
   await expect(image).toHaveCSS("width", "240px");
@@ -547,6 +562,7 @@ test("Text and Button typography updates owned preview text and the heading stay
   await field("Font family").fill("Georgia, serif");
   await option("Weight").selectOption("700");
   await field("Line height").fill("28px");
+  await openAdvanced(page, "Typography");
   await field("Letter spacing").fill("-1px");
   await field("Color").fill("#275d38");
   await option("Alignment").selectOption("right");
@@ -561,9 +577,11 @@ test("Text and Button typography updates owned preview text and the heading stay
   await expect(copy).toHaveCSS("color", "rgb(39, 93, 56)");
 
   await selectLayer(label.locator(".."), "CTA button");
+  await openAdvanced(page, "Typography");
   await option("Decoration").selectOption("underline");
   await option("Transform").selectOption("uppercase");
   await option("Style").selectOption("italic");
+  await openAdvanced(page, "Layout");
   await field("Width").fill("140px");
   await field("Size").fill("20px");
   await option("Wrapping").selectOption("nowrap");
@@ -604,6 +622,7 @@ test("Appearance styles the visible Section, Card, and Button surfaces and stays
 
   await field("Background color").fill("#275d38");
   await expect(section).toHaveCSS("background-color", "rgb(39, 93, 56)");
+  await openAdvanced(page, "Appearance");
   await field("Background image").fill("/prototype/forma-project-1.png");
   await expect(section).toHaveCSS("background-image", /forma-project-1\.png/);
   await field("Background image").fill("url(javascript:example)");
@@ -630,6 +649,7 @@ test("Appearance styles the visible Section, Card, and Button surfaces and stays
   }).toBeLessThan(2);
 
   await page.getByRole("button", { name: "Tablet viewport" }).click();
+  await openAdvanced(page, "Appearance");
   await field("Background image").fill("none");
   await expect(section).toHaveCSS("background-image", "none");
   await page.getByRole("button", { name: "Reset Background image", exact: true }).click();
@@ -677,6 +697,7 @@ test("Image appearance inherits across breakpoints and keeps edits and resets th
   await replace.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(asset).toBeVisible();
   await fit.selectOption("contain");
+  await openAdvanced(page, "Appearance");
   await position.fill("left top");
   await field("Radius").fill("18px");
   await expect(asset).toHaveCSS("object-fit", "contain");
@@ -686,10 +707,12 @@ test("Image appearance inherits across breakpoints and keeps edits and resets th
   await viewport("Tablet");
   await expect(resetPosition).toHaveCount(0);
   await fit.selectOption("cover");
+  await openAdvanced(page, "Appearance");
   await position.fill("25% 75%");
   await viewport("Mobile");
   await expect(asset).toHaveCSS("object-fit", "cover");
   await expect(asset).toHaveCSS("object-position", "25% 75%");
+  await openAdvanced(page, "Appearance");
   await position.fill("right bottom");
   await expect(asset).toHaveCSS("object-position", "100% 100%");
   await viewport("Desktop");
@@ -700,6 +723,7 @@ test("Image appearance inherits across breakpoints and keeps edits and resets th
   await page.reload();
   await selectImage();
   await viewport("Mobile");
+  await openAdvanced(page, "Appearance");
   await expect(position).toHaveValue("right bottom");
   await resetPosition.click();
   await expect(asset).toHaveCSS("object-position", "25% 75%");

@@ -303,7 +303,7 @@ type EditorActions = {
   toggleLayerVisibility: (node: EditorNode) => void;
   updateBlockContent: (blockId: string, content: NodeContent) => void;
   updateImage: (nodeId: string, breakpoint: Breakpoint, edit: ImageEdit) => void;
-  edit: (operation: DocumentOperation) => void;
+  edit: (operation: DocumentOperation, gesture?: symbol) => void;
 };
 
 function IconButton({ label, children }: { label: string; children: ReactNode }) {
@@ -1653,6 +1653,7 @@ function InspectorSection({ title, children }: { title: string; children: ReactN
 function Inspector({ actions, breakpoint, compact = false }: { actions: EditorActions; breakpoint: Breakpoint; compact?: boolean }) {
   const { page, selectedNode: node } = actions;
   const [tab, setTab] = useState("style");
+  const gesture = useRef<symbol | undefined>(undefined);
   const hasSettings = node?.type === "heading" || node?.type === "input";
   const showLayout = !!node && node.type !== "text";
   const showTypography = !!node && node.type !== "section" && ownsText(node);
@@ -1661,7 +1662,10 @@ function Inspector({ actions, breakpoint, compact = false }: { actions: EditorAc
     <aside className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-white">
       <Tabs className="min-h-0 flex-1 !gap-0" onValueChange={(value) => setTab(String(value))} value={hasSettings ? tab : "style"}>
         <div className="flex h-12 shrink-0 items-center border-b border-zinc-200 px-4 text-xs"><TabsList className="!grid !h-full !w-40 grid-cols-2 !gap-0 !p-0" variant="line"><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs data-active:text-zinc-950 after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="style">Style</TabsTrigger><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600 disabled:opacity-40" disabled={!hasSettings} value="settings">Settings</TabsTrigger></TabsList></div>
-        <TabsContent className="min-h-0" value="style">
+        <TabsContent className="min-h-0" value="style"
+          onFocusCapture={(event) => { gesture.current = event.target instanceof HTMLInputElement ? Symbol() : undefined; }}
+          onBlurCapture={() => { gesture.current = undefined; }}
+        >
           <ResizablePanelGroup className="min-h-0 flex-1" id="inspector-sections" orientation="vertical">
             {page && node && showLayout && (
               <>
@@ -1670,7 +1674,7 @@ function Inspector({ actions, breakpoint, compact = false }: { actions: EditorAc
                     breakpoint={breakpoint}
                     key={`${page.id}:${node.id}:${breakpoint}`}
                     node={node}
-                    onChange={(styles) => actions.edit({ type: "node.updateStyle", pageId: page.id, nodeId: node.id, breakpoint, styles })}
+                    onChange={(styles) => actions.edit({ type: "node.updateStyle", pageId: page.id, nodeId: node.id, breakpoint, styles }, gesture.current)}
                     onReset={(property) => actions.edit({ type: "node.resetStyle", pageId: page.id, nodeId: node.id, breakpoint, property })}
                   />
                 </ResizablePanel>
@@ -1684,7 +1688,7 @@ function Inspector({ actions, breakpoint, compact = false }: { actions: EditorAc
                     breakpoint={breakpoint}
                     key={`${page.id}:${node.id}:${breakpoint}`}
                     node={node}
-                    onChange={(styles) => actions.edit({ type: "node.updateStyle", pageId: page.id, nodeId: node.id, breakpoint, styles })}
+                    onChange={(styles) => actions.edit({ type: "node.updateStyle", pageId: page.id, nodeId: node.id, breakpoint, styles }, gesture.current)}
                     onReset={(property) => actions.edit({ type: "node.resetStyle", pageId: page.id, nodeId: node.id, breakpoint, property })}
                   />
                 </ResizablePanel>
@@ -1697,7 +1701,7 @@ function Inspector({ actions, breakpoint, compact = false }: { actions: EditorAc
                   breakpoint={breakpoint}
                   key={`${page.id}:${node.id}:${breakpoint}`}
                   node={node}
-                  onChange={(styles) => actions.edit({ type: "node.updateStyle", pageId: page.id, nodeId: node.id, breakpoint, styles })}
+                  onChange={(styles) => actions.edit({ type: "node.updateStyle", pageId: page.id, nodeId: node.id, breakpoint, styles }, gesture.current)}
                   onReset={(property) => actions.edit({ type: "node.resetStyle", pageId: page.id, nodeId: node.id, breakpoint, property })}
                 />
               </ResizablePanel>
@@ -2222,7 +2226,7 @@ function ancestorNodes(page: PageDocument, node: EditorNode | null) {
   return nodes.reverse();
 }
 
-type DocumentHistory = { document: SiteDocument; past: SiteDocument[]; future: SiteDocument[] };
+type DocumentHistory = { gesture?: symbol; document: SiteDocument; past: SiteDocument[]; future: SiteDocument[] };
 
 export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwitcher?: boolean }) {
   const router = useRouter();
@@ -2255,13 +2259,14 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
     router.replace(pathname + "?" + next.toString(), { scroll: false });
   }, [pathname, router, searchParams]);
 
-  function commit(update: (document: SiteDocument) => SiteDocument) {
+  function commit(update: (document: SiteDocument) => SiteDocument, gesture?: symbol) {
     setTimeline((current) => {
       const document = update(current.document);
       if (document === current.document) return current;
       return {
         document,
-        past: [...current.past, current.document].slice(-50),
+        gesture,
+        past: gesture && gesture === current.gesture ? current.past : [...current.past, current.document].slice(-50),
         future: [],
       };
     });
@@ -2304,8 +2309,8 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
     });
   }
 
-  function edit(operation: DocumentOperation) {
-    commit((document) => applyDocumentOperation(document, operation));
+  function edit(operation: DocumentOperation, gesture?: symbol) {
+    commit((document) => applyDocumentOperation(document, operation), gesture);
   }
 
   function insertItem(item: QuickInsertItem, dropTarget?: InsertionTarget) {
