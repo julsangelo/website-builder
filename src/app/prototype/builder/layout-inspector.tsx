@@ -4,13 +4,23 @@ import { ChevronDown, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { resolveStyles, type Breakpoint, type EditorNode, type StyleValues } from "@/lib/builder-document";
+import { isContainer, resolveStyles, type Breakpoint, type EditorNode, type StyleValues } from "@/lib/builder-document";
 
 const displayOptions = ["block", "flex", "grid", "none"];
 const justifyOptions = ["normal", "start", "center", "end", "space-between", "space-around", "space-evenly"];
+const overflowOptions = ["visible", "hidden", "clip", "auto", "scroll"];
 
-type LayoutProperty = "display" | "flexDirection" | "flexWrap" | "alignItems" | "justifyContent"
-  | "gridTemplateColumns" | "gridTemplateRows" | "gap";
+const dimensionFields = [
+  ["width", "Width"], ["height", "Height"],
+  ["minWidth", "Min width"], ["maxWidth", "Max width"],
+  ["minHeight", "Min height"], ["maxHeight", "Max height"],
+] as const;
+
+type CssValueProperty = typeof dimensionFields[number][0]
+  | "margin" | "padding" | "inset" | "zIndex" | "gridTemplateColumns" | "gridTemplateRows" | "gap";
+
+type LayoutProperty = CssValueProperty | "display" | "flexDirection" | "flexWrap" | "alignItems"
+  | "justifyContent" | "position" | "overflow";
 
 type LayoutInspectorProps = {
   breakpoint: Breakpoint;
@@ -19,13 +29,15 @@ type LayoutInspectorProps = {
   onReset: (property: LayoutProperty) => void;
 };
 
-function CssValueInput({ id, property, value: resolved, onChange }: {
+function CssValueInput({ id, property, value: resolved, hint, onChange }: {
   id: string;
-  property: "grid-template-columns" | "grid-template-rows" | "gap";
-  value: string | number;
+  property: CssValueProperty;
+  value?: string | number;
+  hint: string;
   onChange: (value: string) => void;
 }) {
-  const value = typeof resolved === "number" ? `${resolved}px` : resolved;
+  const value = typeof resolved === "number" && property !== "zIndex" ? `${resolved}px` : String(resolved ?? "");
+  const cssProperty = property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
   const [draft, setDraft] = useState<{ source: string; text: string; invalid: boolean } | null>(null);
   const activeDraft = draft?.source === value ? draft : null;
   const errorId = `${id}-error`;
@@ -40,7 +52,7 @@ function CssValueInput({ id, property, value: resolved, onChange }: {
         onChange={(event) => {
           const text = event.target.value;
           const candidate = text.trim();
-          const valid = !/[;{}]/.test(candidate) && CSS.supports(property, candidate);
+          const valid = !/[;{}\\]/.test(candidate) && CSS.supports(cssProperty, candidate);
           setDraft({ source: valid ? candidate : value, text, invalid: !valid });
           if (valid && candidate !== value) onChange(candidate);
         }}
@@ -48,12 +60,13 @@ function CssValueInput({ id, property, value: resolved, onChange }: {
           if (event.key === "Enter" && !activeDraft?.invalid) event.currentTarget.blur();
           if (event.key === "Escape") setDraft(null);
         }}
+        placeholder="Default"
         spellCheck={false}
         value={activeDraft?.text ?? value}
       />
       {activeDraft?.invalid && (
         <p className="mt-1 text-xs text-destructive" id={errorId}>
-          {property === "gap" ? "Enter a CSS gap such as 16px or 1rem." : "Enter CSS tracks such as 1fr 1fr or auto."}
+          {hint}
         </p>
       )}
     </div>
@@ -66,9 +79,11 @@ export function LayoutInspector({ breakpoint, node, onChange, onReset }: LayoutI
   const id = useId();
   const style = resolveStyles(node, breakpoint);
   const display = style.display ?? "block";
+  const container = isContainer(node.type);
   const flex = display === "flex" || display === "inline-flex";
   const grid = display === "grid" || display === "inline-grid";
   const disclosure = node.metadata?.appearance === "preset-question";
+  const position = style.position ?? "relative";
 
   function field(property: LayoutProperty, label: string, render: (id: string) => ReactNode) {
     const fieldId = `${id}-${property}`;
@@ -106,6 +121,18 @@ export function LayoutInspector({ breakpoint, node, onChange, onReset }: LayoutI
     ));
   }
 
+  function cssValue(property: CssValueProperty, label: string, hint: string, fallback?: string) {
+    return field(property, label, (fieldId) => (
+      <CssValueInput
+        hint={hint}
+        id={fieldId}
+        onChange={(value) => onChange({ [property]: value })}
+        property={property}
+        value={style[property] ?? fallback}
+      />
+    ));
+  }
+
   return (
     <ScrollArea
       className="h-full"
@@ -129,26 +156,33 @@ export function LayoutInspector({ breakpoint, node, onChange, onReset }: LayoutI
           <ChevronDown aria-hidden="true" className={`size-3.5 text-zinc-500 ${expanded ? "" : "-rotate-90"}`} />
         </Button>
         <div className="space-y-2 p-4" hidden={!expanded} id={id}>
-          {select("display", "Display", display, disclosure ? ["block", "none"] : displayOptions)}
-          {!disclosure && flex && (
+          {container && select("display", "Display", display, disclosure ? ["block", "none"] : displayOptions)}
+          {container && !disclosure && flex && (
             <>
               {select("flexDirection", "Direction", style.flexDirection ?? "row", ["row", "column"])}
               {select("flexWrap", "Wrap", style.flexWrap ?? "nowrap", ["nowrap", "wrap"])}
             </>
           )}
-          {!disclosure && (flex || grid) && (
+          {container && !disclosure && (flex || grid) && (
             <>
               {select("alignItems", "Align items", style.alignItems ?? "normal", ["normal", "start", "center", "end", "stretch", "baseline"])}
               {select("justifyContent", "Justify content", style.justifyContent ?? "normal", grid ? [...justifyOptions, "stretch"] : justifyOptions)}
-              {grid && field("gridTemplateColumns", "Grid columns", (fieldId) => (
-                <CssValueInput id={fieldId} property="grid-template-columns" value={style.gridTemplateColumns ?? "none"} onChange={(gridTemplateColumns) => onChange({ gridTemplateColumns })} />
+              {grid && cssValue("gridTemplateColumns", "Grid columns", "Enter CSS tracks such as 1fr 1fr or auto.", "none")}
+              {grid && cssValue("gridTemplateRows", "Grid rows", "Enter CSS tracks such as 1fr 1fr or auto.", "none")}
+              {cssValue("gap", "Gap", "Enter a CSS gap such as 16px or 1rem.", "normal")}
+            </>
+          )}
+          {display !== "none" && (
+            <>
+              {dimensionFields.map(([property, label]) => (
+                <div key={property}>{cssValue(property, label, "Enter a CSS size such as 320px or 50%.")}</div>
               ))}
-              {grid && field("gridTemplateRows", "Grid rows", (fieldId) => (
-                <CssValueInput id={fieldId} property="grid-template-rows" value={style.gridTemplateRows ?? "none"} onChange={(gridTemplateRows) => onChange({ gridTemplateRows })} />
-              ))}
-              {field("gap", "Gap", (fieldId) => (
-                <CssValueInput id={fieldId} property="gap" value={style.gap ?? "normal"} onChange={(gap) => onChange({ gap })} />
-              ))}
+              {cssValue("margin", "Margin", "Enter 1–4 values, such as 12px auto.")}
+              {cssValue("padding", "Padding", "Enter 1–4 nonnegative values, such as 8px 1rem.")}
+              {select("position", "Position", position, ["relative", "absolute"])}
+              {position !== "static" && cssValue("inset", "Inset", "Enter 1–4 values in top, right, bottom, left order, such as 0 auto auto 8px.", "auto")}
+              {select("overflow", "Overflow", style.overflow ?? "visible", overflowOptions)}
+              {cssValue("zIndex", "Z-index", "Enter a whole number or auto.", "auto")}
             </>
           )}
         </div>

@@ -1298,9 +1298,9 @@ function PreviewSelectable({
       aria-label={label}
       aria-pressed={selected}
       className={
-        "cursor-pointer transition focus-visible:ring-2 focus-visible:ring-orange-500 " +
+        "relative cursor-pointer transition focus-visible:ring-2 focus-visible:ring-orange-500 " +
         (emptyContainer ? "min-h-8 outline-1 -outline-offset-1 outline-dashed outline-zinc-300 " : "outline-none ") +
-        (selected ? "relative z-10 ring-2 ring-orange-400 ring-offset-2" : "hover:ring-1 hover:ring-orange-300") +
+        (selected ? "ring-2 ring-orange-400 ring-offset-2" : "hover:ring-1 hover:ring-orange-300") +
         " " + className
       }
       data-node-id={node.id}
@@ -1416,9 +1416,10 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
       "content-media-media": "bg-linear-to-bl from-[#d7c7af] via-[#887764] to-[#3f433d]",
       "preset-image": "bg-linear-to-br from-[#d5c4ac] via-[#8e7159] to-[#455143]",
     }[appearance] ?? "bg-linear-to-br from-[#d9d1c3] via-[#a8947c] to-[#4f584b]";
-    return frame(`relative ${dimensions} ${content.imageUrl ? "" : gradient}`, (
+    return frame(`flex flex-col ${dimensions}`, (
       <PreviewImage
         content={content}
+        placeholderClassName={gradient}
         objectFit={style.objectFit}
         objectPosition={style.objectPosition}
         onCommit={(edit) => actions.updateImage(node.id, breakpoint, edit)}
@@ -1538,7 +1539,7 @@ function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }
         {...handlers}
       >
         {hasVisibleContent ? (
-          <div className="w-full text-left" key={page?.id}>
+          <div className="isolate w-full text-left" key={page?.id}>
             {page?.rootIds.map((id) => (
               <PreviewNode actions={actions} breakpoint={breakpoint} key={id} move={move} node={page.nodes[id]} />
             ))}
@@ -1601,7 +1602,7 @@ function Inspector({ actions, breakpoint }: { actions: EditorActions; breakpoint
         <div className="flex h-12 shrink-0 items-center border-b border-zinc-200 px-4 text-xs"><TabsList className="!grid !h-full !w-40 grid-cols-2 !gap-0 !p-0" variant="line"><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs data-active:text-zinc-950 after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="style">Style</TabsTrigger><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="settings">Settings</TabsTrigger></TabsList><MoreHorizontal className="ml-auto size-4 text-zinc-500" /></div>
         <TabsContent className="min-h-0" value="style">
           <ResizablePanelGroup className="min-h-0 flex-1" id="inspector-sections" orientation="vertical">
-            {page && node && isContainer(node.type) && (
+            {page && node && node.type !== "text" && (
               <>
                 <ResizablePanel defaultSize="38" id="layout" minSize="210px">
                   <LayoutInspector

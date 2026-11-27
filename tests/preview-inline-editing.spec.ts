@@ -364,3 +364,105 @@ test("Layout overrides inherit across viewports and survive reload and undo", as
   await expect(gap).toHaveValue("normal");
   await expect(resetGap).toHaveCount(0);
 });
+
+test("Spatial Layout fields resize containers, validate values, and apply position and overflow", async ({ page }) => {
+  const section = page.locator('article [data-node-id][aria-label="Content + media"]');
+  const id = await section.getAttribute("data-node-id");
+  await page.locator(`[data-layer-node-id="${id}"]`).getByRole("button", { name: "Content + media", exact: true }).click();
+  await expect(section).toHaveAttribute("aria-pressed", "true");
+  const field = (name: string) => page.getByRole("textbox", { name, exact: true });
+
+  await field("Width").fill("340");
+  await expect(field("Width")).toHaveAttribute("aria-invalid", "true");
+  await expect(section).not.toHaveCSS("width", "340px");
+  await field("Width").fill("340px");
+  await expect(section).toHaveCSS("width", "340px");
+  await field("Min width").fill("360px");
+  await expect(section).toHaveCSS("width", "360px");
+  await field("Max width").fill("380px");
+  await field("Width").fill("420px");
+  await expect(section).toHaveCSS("width", "380px");
+  await field("Height").fill("220px");
+  await field("Min height").fill("240px");
+  await expect(section).toHaveCSS("height", "240px");
+  await field("Max height").fill("260px");
+  await field("Height").fill("300px");
+  await expect(section).toHaveCSS("height", "260px");
+
+  await field("Margin").fill("-4px auto 8px");
+  await expect(section).toHaveCSS("margin-top", "-4px");
+  await expect(section).toHaveCSS("margin-bottom", "8px");
+  await field("Padding").fill("-2px");
+  await expect(field("Padding")).toHaveAttribute("aria-invalid", "true");
+  await field("Padding").fill("8px 1rem");
+  await expect(section).toHaveCSS("padding-top", "8px");
+  await expect(section).toHaveCSS("padding-left", "16px");
+
+  await page.getByRole("combobox", { name: "Overflow", exact: true }).selectOption("hidden");
+  await expect(section).toHaveCSS("overflow", "hidden");
+  await page.getByRole("combobox", { name: "Position", exact: true }).selectOption("absolute");
+  await field("Inset").fill("70px auto auto 12px");
+  await expect(section).toHaveCSS("position", "absolute");
+  await expect(section).toHaveCSS("top", "70px");
+  await expect(section).toHaveCSS("left", "12px");
+  await field("Z-index").fill("3");
+  await expect(section).toHaveCSS("z-index", "3");
+  await field("Z-index").fill("2.5");
+  await expect(field("Z-index")).toHaveAttribute("aria-invalid", "true");
+  await expect(section).toHaveCSS("z-index", "3");
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(section).toHaveCSS("z-index", "auto");
+});
+
+test("Image Layout overrides fill the padded frame and reset to the wider breakpoint", async ({ page }) => {
+  const image = page.locator('article [data-node-id][aria-label="Hero"] [data-node-id][aria-label="Image"]');
+  const surface = image.locator("[data-image-surface]");
+  const selectImage = async () => {
+    const id = await image.getAttribute("data-node-id");
+    await page.locator(`[data-layer-node-id="${id}"]`).getByRole("button", { name: "Image", exact: true }).click();
+  };
+  const desktop = page.getByRole("button", { name: "Desktop viewport" });
+  const tablet = page.getByRole("button", { name: "Tablet viewport" });
+  const mobile = page.getByRole("button", { name: "Mobile viewport" });
+  const width = page.getByRole("textbox", { name: "Width", exact: true });
+  const resetWidth = page.getByRole("button", { name: "Reset Width", exact: true });
+
+  await selectImage();
+  await expect(page.getByRole("combobox", { name: "Display", exact: true })).toHaveCount(0);
+  await width.fill("240px");
+  await page.getByRole("textbox", { name: "Padding", exact: true }).fill("12px");
+  await expect(surface).toHaveCSS("width", "216px");
+  await tablet.click();
+  await expect(width).toHaveValue("240px");
+  await expect(resetWidth).toHaveCount(0);
+  await width.fill("180px");
+  await expect(surface).toHaveCSS("width", "156px");
+  await mobile.click();
+  await expect(width).toHaveValue("180px");
+  await expect(resetWidth).toHaveCount(0);
+  await width.fill("140px");
+  await expect(surface).toHaveCSS("width", "116px");
+  await desktop.click();
+  await expect(image).toHaveCSS("width", "240px");
+
+  await expect(savedStatus(page)).toBeVisible();
+  await page.reload();
+  await selectImage();
+  await mobile.click();
+  await expect(image).toHaveCSS("width", "140px");
+  await resetWidth.click();
+  await expect(image).toHaveCSS("width", "180px");
+  await expect(resetWidth).toHaveCount(0);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(image).toHaveCSS("width", "140px");
+  await page.getByRole("button", { name: "Redo", exact: true }).click();
+  await expect(image).toHaveCSS("width", "180px");
+  await tablet.click();
+  await expect(width).toHaveValue("180px");
+  await resetWidth.click();
+  await expect(image).toHaveCSS("width", "240px");
+
+  await page.getByText("Our approach", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "Layout", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Typography", exact: true })).toBeVisible();
+});

@@ -19,10 +19,11 @@ function readImage(file: File) {
   });
 }
 
-export function PreviewImage({ content, objectFit, objectPosition, selected, onSelect, onCommit, standalone }: {
+export function PreviewImage({ content, objectFit, objectPosition, placeholderClassName, selected, onSelect, onCommit, standalone }: {
   content: NodeContent;
   objectFit: CSSProperties["objectFit"];
   objectPosition: CSSProperties["objectPosition"];
+  placeholderClassName: string;
   selected: boolean;
   onSelect: () => void;
   onCommit: (edit: ImageEdit) => void;
@@ -35,7 +36,7 @@ export function PreviewImage({ content, objectFit, objectPosition, selected, onS
   return (
     <Popover.Root open={showEditor} onOpenChange={setOpen}>
       <div
-        className="absolute inset-0 overflow-hidden rounded-[inherit]"
+        className={`relative min-h-0 flex-1 overflow-hidden rounded-[inherit] ${content.imageUrl ? "" : placeholderClassName}`}
         data-image-surface
         onDoubleClick={(event) => {
           event.preventDefault();
@@ -47,9 +48,9 @@ export function PreviewImage({ content, objectFit, objectPosition, selected, onS
         {content.imageUrl ? (
           // User-supplied URLs and data URLs load directly in the browser.
           // eslint-disable-next-line @next/next/no-img-element
-          <img alt={content.alt ?? ""} className="block size-full" draggable={false} src={content.imageUrl} style={{ objectFit: objectFit ?? "cover", objectPosition }} />
+          <img alt={content.alt ?? ""} className="absolute inset-0 block size-full" draggable={false} src={content.imageUrl} style={{ objectFit: objectFit ?? "cover", objectPosition }} />
         ) : standalone && (
-          <div className="size-full bg-[radial-gradient(circle_at_70%_35%,rgba(255,255,255,.55),transparent_26%),radial-gradient(circle_at_25%_80%,rgba(36,46,39,.45),transparent_36%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_35%,rgba(255,255,255,.55),transparent_26%),radial-gradient(circle_at_25%_80%,rgba(36,46,39,.45),transparent_36%)]" />
         )}
       </div>
       {selected && (
