@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { NodeContent } from "@/lib/builder-document";
 
-const objectFits = ["cover", "contain", "fill", "none", "scale-down"] as const;
+export const objectFits = ["cover", "contain", "fill", "none", "scale-down"] as const;
 export type ImageFit = typeof objectFits[number];
 export type ImageEdit = { imageUrl?: string; alt: string; objectFit: ImageFit };
 

@@ -586,3 +586,130 @@ test("Text and Button typography updates owned preview text and the heading stay
     return Math.abs(header!.y - viewport!.y);
   }).toBeLessThan(2);
 });
+
+test("Appearance styles the visible Section, Card, and Button surfaces and stays hidden for plain Text", async ({ page }) => {
+  const node = (label: string) => page.locator(`article [data-node-id][aria-label="${label}"]`);
+  const section = node("Content + media");
+  const inspector = page.getByRole("button", { name: "Appearance", exact: true });
+  const field = (name: string) => page.getByRole("textbox", { name, exact: true });
+  const option = (name: string) => page.getByRole("combobox", { name, exact: true });
+  const insert = (name: string) => page.locator('button[draggable="true"]').filter({ hasText: new RegExp(`^${name}$`) }).click();
+
+  await section.getByRole("button", { name: "Description", exact: true }).click();
+  await expect(inspector).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Typography", exact: true })).toBeVisible();
+  const sectionId = await section.getAttribute("data-node-id");
+  await page.locator(`[data-layer-node-id="${sectionId}"]`).getByRole("button", { name: "Content + media", exact: true }).click();
+  await expect(option("Object fit")).toHaveCount(0);
+
+  await field("Background color").fill("#275d38");
+  await expect(section).toHaveCSS("background-color", "rgb(39, 93, 56)");
+  await field("Background image").fill("/prototype/forma-project-1.png");
+  await expect(section).toHaveCSS("background-image", /forma-project-1\.png/);
+  await field("Background image").fill("url(javascript:example)");
+  await expect(field("Background image")).toHaveAttribute("aria-invalid", "true");
+  await expect(section).toHaveCSS("background-image", /forma-project-1\.png/);
+  await field("Opacity").fill("75%");
+  await expect(section).toHaveCSS("opacity", "0.75");
+  await field("Opacity").fill("150%");
+  await expect(field("Opacity")).toHaveAttribute("aria-invalid", "true");
+  await expect(section).toHaveCSS("opacity", "0.75");
+  await option("Blend mode").selectOption("multiply");
+  await expect(section).toHaveCSS("mix-blend-mode", "multiply");
+  await field("Shadow").fill("0 4px 12px rgb(0 0 0 / 30%)");
+  await expect(section).toHaveCSS("box-shadow", "rgba(0, 0, 0, 0.3) 0px 4px 12px 0px");
+  await expect(section).toHaveCSS("outline-width", "2px");
+
+  const scroll = page.locator('[data-slot="scroll-area-viewport"]').filter({ has: inspector });
+  await scroll.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect(inspector).toHaveCSS("position", "sticky");
+  await expect(inspector).not.toHaveCSS("box-shadow", "none");
+  await expect.poll(async () => {
+    const [header, viewport] = await Promise.all([inspector.boundingBox(), scroll.boundingBox()]);
+    return Math.abs(header!.y - viewport!.y);
+  }).toBeLessThan(2);
+
+  await page.getByRole("button", { name: "Tablet viewport" }).click();
+  await field("Background image").fill("none");
+  await expect(section).toHaveCSS("background-image", "none");
+  await page.getByRole("button", { name: "Reset Background image", exact: true }).click();
+  await expect(section).toHaveCSS("background-image", /forma-project-1\.png/);
+  await page.getByRole("button", { name: "Desktop viewport" }).click();
+
+  await insert("Card");
+  const card = node("Card").getByText("Card title", { exact: true }).locator("xpath=ancestor::div[@data-slot='card']");
+  await field("Background color").fill("#f5eee0");
+  await field("Border width").fill("4px");
+  await option("Border style").selectOption("dashed");
+  await field("Border color").fill("#275d38");
+  await field("Radius").fill("20px");
+  await expect(card).toHaveCSS("background-color", "rgb(245, 238, 224)");
+  await expect(card).toHaveCSS("border-top-width", "4px");
+  await expect(card).toHaveCSS("border-top-style", "dashed");
+  await expect(card).toHaveCSS("border-top-color", "rgb(39, 93, 56)");
+  await expect(card).toHaveCSS("border-top-left-radius", "20px");
+
+  await insert("Button");
+  const button = node("Button").locator(":scope > span");
+  await field("Background color").fill("rebeccapurple");
+  await field("Radius").fill("22px");
+  await expect(button).toHaveCSS("background-color", "rgb(102, 51, 153)");
+  await expect(button).toHaveCSS("border-top-left-radius", "22px");
+});
+
+test("Image appearance inherits across breakpoints and keeps edits and resets through reload and undo", async ({ page }) => {
+  const image = page.locator('article [data-node-id][aria-label="Hero"] [data-node-id][aria-label="Image"]');
+  const asset = image.locator("img");
+  const selectImage = async () => {
+    const id = await image.getAttribute("data-node-id");
+    await page.locator(`[data-layer-node-id="${id}"]`).getByRole("button", { name: "Image", exact: true }).click();
+  };
+  const field = (name: string) => page.getByRole("textbox", { name, exact: true });
+  const fit = page.getByRole("combobox", { name: "Object fit", exact: true });
+  const position = field("Object position");
+  const resetPosition = page.getByRole("button", { name: "Reset Object position", exact: true });
+  const viewport = (name: string) => page.getByRole("button", { name: `${name} viewport` }).click();
+
+  await selectImage();
+  await image.getByRole("button", { name: "Edit image", exact: true }).click();
+  const replace = page.getByRole("dialog", { name: "Replace image" });
+  await replace.getByRole("textbox", { name: "Image URL" }).fill("/prototype/forma-project-2.png");
+  await replace.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(asset).toBeVisible();
+  await fit.selectOption("contain");
+  await position.fill("left top");
+  await field("Radius").fill("18px");
+  await expect(asset).toHaveCSS("object-fit", "contain");
+  await expect(asset).toHaveCSS("object-position", "0% 0%");
+  await expect(image.locator("[data-image-surface]")).toHaveCSS("border-top-left-radius", "18px");
+
+  await viewport("Tablet");
+  await expect(resetPosition).toHaveCount(0);
+  await fit.selectOption("cover");
+  await position.fill("25% 75%");
+  await viewport("Mobile");
+  await expect(asset).toHaveCSS("object-fit", "cover");
+  await expect(asset).toHaveCSS("object-position", "25% 75%");
+  await position.fill("right bottom");
+  await expect(asset).toHaveCSS("object-position", "100% 100%");
+  await viewport("Desktop");
+  await expect(asset).toHaveCSS("object-fit", "contain");
+  await expect(asset).toHaveCSS("object-position", "0% 0%");
+
+  await expect(savedStatus(page)).toBeVisible();
+  await page.reload();
+  await selectImage();
+  await viewport("Mobile");
+  await expect(position).toHaveValue("right bottom");
+  await resetPosition.click();
+  await expect(asset).toHaveCSS("object-position", "25% 75%");
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(asset).toHaveCSS("object-position", "100% 100%");
+  await page.getByRole("button", { name: "Redo", exact: true }).click();
+  await expect(savedStatus(page)).toBeVisible();
+  await page.reload();
+  await selectImage();
+  await viewport("Mobile");
+  await expect(asset).toHaveCSS("object-position", "25% 75%");
+  await expect(resetPosition).toHaveCount(0);
+});

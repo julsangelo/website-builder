@@ -39,11 +39,12 @@ export function StyleInspectorSection({ title, children }: { title: string; chil
   );
 }
 
-export function CssValueInput({ id, property, value: resolved, hint, onChange, pixelUnits = false }: {
+export function CssValueInput({ id, property, value: resolved, hint, onChange, normalize, pixelUnits = false }: {
   id: string;
   property: keyof StyleValues;
   value?: string | number;
   hint: string;
+  normalize?: (value: string) => string | undefined;
   pixelUnits?: boolean;
   onChange: (value: string) => void;
 }) {
@@ -62,8 +63,9 @@ export function CssValueInput({ id, property, value: resolved, hint, onChange, p
         onBlur={() => setDraft(null)}
         onChange={(event) => {
           const text = event.target.value;
-          const candidate = text.trim();
-          const valid = !/[;{}\\]/.test(candidate) && CSS.supports(cssProperty, candidate);
+          const input = text.trim();
+          const candidate = normalize ? normalize(input) : input;
+          const valid = candidate !== undefined && !/[;{}\\]/.test(candidate) && CSS.supports(cssProperty, candidate);
           setDraft({ source: valid ? candidate : value, text, invalid: !valid });
           if (valid && candidate !== value) onChange(candidate);
         }}

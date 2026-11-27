@@ -98,6 +98,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog } from "@base-ui/react/dialog";
+import { AppearanceInspector, ownsSurface, splitAppearanceStyles } from "./appearance-inspector";
 import { LayoutInspector } from "./layout-inspector";
 import { ButtonLinkControl, PreviewText } from "./preview-content";
 import { PreviewImage, type ImageEdit } from "./preview-image";
@@ -1295,6 +1296,9 @@ function PreviewSelectable({
 }) {
   const selected = actions.selectedNode?.id === node.id;
   const { label } = nodeDetails(node);
+  const selectionStyle = style.boxShadow === undefined
+    ? selected ? "ring-2 ring-orange-400 ring-offset-2" : "hover:ring-1 hover:ring-orange-300"
+    : selected ? "outline-2 outline-offset-2 outline-orange-400" : "hover:outline-1 hover:outline-orange-300";
 
   return (
     <div
@@ -1302,9 +1306,8 @@ function PreviewSelectable({
       aria-pressed={selected}
       className={
         "relative cursor-pointer transition focus-visible:ring-2 focus-visible:ring-orange-500 " +
-        (emptyContainer ? "min-h-8 outline-1 -outline-offset-1 outline-dashed outline-zinc-300 " : "outline-none ") +
-        (selected ? "ring-2 ring-orange-400 ring-offset-2" : "hover:ring-1 hover:ring-orange-300") +
-        " " + className
+        (emptyContainer ? "min-h-8 outline-1 -outline-offset-1 outline-dashed outline-zinc-300 " : "") +
+        selectionStyle + " " + className
       }
       data-node-id={node.id}
       onClick={(event) => {
@@ -1380,8 +1383,14 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
   const children = node.childIds.map((id) => (
     <PreviewNode actions={actions} breakpoint={breakpoint} key={id} move={move} node={page.nodes[id]} />
   ));
-  const style = resolveStyles(node, breakpoint);
-  const { frameStyle, textStyle } = splitTypographyStyles(style);
+  const { frameStyle, surfaceStyle, objectFit, objectPosition } = splitAppearanceStyles(resolveStyles(node, breakpoint));
+  const { frameStyle: layoutStyle, textStyle } = splitTypographyStyles(frameStyle);
+  const surfaceOnContent = ["card", "quote", "stat", "form", "navigation", "footer", "accordion", "input", "divider"].includes(node.type)
+    || (node.type === "button" && appearance !== "hero-cta-button");
+  const previewStyle = {
+    ...(ownsText(node) ? layoutStyle : frameStyle),
+    ...(!surfaceOnContent && surfaceStyle),
+  };
   const hasButton = node.type === "button" || node.type === "card" || node.type === "form" || node.type === "navigation";
   const updateContent = (content: NodeContent) => actions.updateBlockContent(node.id, content);
   const text = (
@@ -1396,12 +1405,12 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
       label={field === "buttonLabel" ? "Button label" : nodeDetails(node).label}
       multiline={field !== "buttonLabel"}
       onCommit={updateContent}
-      style={textStyle}
+      style={node.type === "button" && surfaceOnContent ? { ...surfaceStyle, ...textStyle } : textStyle}
       value={content[field]}
     />
   );
   const frame = (className: string, body?: ReactNode, nested: ReactNode = children) => (
-    <PreviewSelectable actions={actions} className={className} emptyContainer={isContainer(node.type) && !node.childIds.some((id) => page.nodes[id].visible)} hasButton={hasButton} move={move} node={node} style={ownsText(node) ? frameStyle : style}>
+    <PreviewSelectable actions={actions} className={className} emptyContainer={isContainer(node.type) && !node.childIds.some((id) => page.nodes[id].visible)} hasButton={hasButton} move={move} node={node} style={previewStyle}>
       {body}
       {nested}
     </PreviewSelectable>
@@ -1421,16 +1430,17 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
       "content-media-media": "bg-linear-to-bl from-[#d7c7af] via-[#887764] to-[#3f433d]",
       "preset-image": "bg-linear-to-br from-[#d5c4ac] via-[#8e7159] to-[#455143]",
     }[appearance] ?? "bg-linear-to-br from-[#d9d1c3] via-[#a8947c] to-[#4f584b]";
+    const usePlaceholder = surfaceStyle.backgroundColor === undefined && surfaceStyle.backgroundImage === undefined;
     return frame(`flex flex-col ${dimensions}`, (
       <PreviewImage
         content={content}
-        placeholderClassName={gradient}
-        objectFit={style.objectFit}
-        objectPosition={style.objectPosition}
+        placeholderClassName={usePlaceholder ? gradient : ""}
+        objectFit={objectFit}
+        objectPosition={objectPosition}
         onCommit={(edit) => actions.updateImage(node.id, breakpoint, edit)}
         onSelect={() => actions.choose(node)}
         selected={actions.selectedNode?.id === node.id}
-        standalone={standalone}
+        standalone={standalone && usePlaceholder}
       />
     ));
   }
@@ -1487,23 +1497,23 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
     case "button":
       return frame("inline-flex max-w-full", text("buttonLabel", "span", buttonVariants({ className: "inline-block h-auto min-h-8 w-full content-center bg-zinc-900 px-5 text-center text-sm text-white hover:bg-zinc-800" })));
     case "divider":
-      return frame("py-5", <><Separator /></>);
+      return frame("py-5", <Separator style={surfaceStyle} />);
     case "card":
-      return frame("bg-zinc-50 p-6", <Card className="border border-zinc-200 bg-white shadow-none"><CardHeader><CardTitle>{text("title", "span", "block")}</CardTitle><CardDescription>{text("body", "span", "block")}</CardDescription></CardHeader><CardFooter>{text("buttonLabel", "span", buttonVariants({ size: "sm", variant: "outline" }))}</CardFooter></Card>);
+      return frame("bg-zinc-50 p-6", <Card className={`border border-zinc-200 bg-white shadow-none ${surfaceStyle.borderWidth !== undefined || surfaceStyle.borderStyle !== undefined ? "ring-0" : ""}`} style={surfaceStyle}><CardHeader><CardTitle>{text("title", "span", "block")}</CardTitle><CardDescription>{text("body", "span", "block")}</CardDescription></CardHeader><CardFooter>{text("buttonLabel", "span", buttonVariants({ size: "sm", variant: "outline" }))}</CardFooter></Card>);
     case "quote":
-      return frame("bg-zinc-50 p-8", <Card className="border border-zinc-200 bg-white shadow-none"><CardContent className="p-8">{text("body", "p", "text-2xl leading-tight tracking-[-0.03em] text-zinc-900")}{text("title", "p", "mt-5 text-sm text-zinc-500")}</CardContent></Card>);
+      return frame("bg-zinc-50 p-8", <Card className="border border-zinc-200 bg-white shadow-none" style={surfaceStyle}><CardContent className="p-8">{text("body", "p", "text-2xl leading-tight tracking-[-0.03em] text-zinc-900")}{text("title", "p", "mt-5 text-sm text-zinc-500")}</CardContent></Card>);
     case "stat":
-      return frame("bg-zinc-50 p-6", <Card className="border border-zinc-200 bg-white text-center shadow-none"><CardContent className="p-7">{text("title", "p", "text-5xl font-semibold tracking-[-0.05em] text-zinc-900")}{text("body", "p", "mt-2 text-sm text-zinc-500")}</CardContent></Card>);
+      return frame("bg-zinc-50 p-6", <Card className="border border-zinc-200 bg-white text-center shadow-none" style={surfaceStyle}><CardContent className="p-7">{text("title", "p", "text-5xl font-semibold tracking-[-0.05em] text-zinc-900")}{text("body", "p", "mt-2 text-sm text-zinc-500")}</CardContent></Card>);
     case "accordion":
-      return frame("bg-white p-6", <Accordion className="rounded-lg border border-zinc-200 px-4" defaultValue={["first"]}><AccordionItem value="first"><AccordionTrigger><span className="flex-1" style={textStyle}>{content.title}</span></AccordionTrigger><AccordionContent>{text("body", "p")}</AccordionContent></AccordionItem><AccordionItem value="second"><AccordionTrigger>How long does it take?</AccordionTrigger><AccordionContent>Timelines are shaped around your team, scope, and launch goals.</AccordionContent></AccordionItem></Accordion>);
+      return frame("bg-white p-6", <Accordion className="rounded-lg border border-zinc-200 px-4" defaultValue={["first"]} style={surfaceStyle}><AccordionItem value="first"><AccordionTrigger><span className="flex-1" style={textStyle}>{content.title}</span></AccordionTrigger><AccordionContent>{text("body", "p")}</AccordionContent></AccordionItem><AccordionItem value="second"><AccordionTrigger>How long does it take?</AccordionTrigger><AccordionContent>Timelines are shaped around your team, scope, and launch goals.</AccordionContent></AccordionItem></Accordion>);
     case "form":
-      return frame("bg-zinc-50 p-6", <Card className="border border-zinc-200 bg-white shadow-none"><CardHeader><CardTitle>{text("title", "span", "block")}</CardTitle><CardDescription>{text("body", "span", "block")}</CardDescription></CardHeader><CardContent className="grid gap-3"><Input placeholder="Your name" /><Input placeholder="you@example.com" /><Input placeholder="How can we help?" /></CardContent><CardFooter>{text("buttonLabel", "span", buttonVariants())}</CardFooter></Card>);
+      return frame("bg-zinc-50 p-6", <Card className="border border-zinc-200 bg-white shadow-none" style={surfaceStyle}><CardHeader><CardTitle>{text("title", "span", "block")}</CardTitle><CardDescription>{text("body", "span", "block")}</CardDescription></CardHeader><CardContent className="grid gap-3"><Input placeholder="Your name" /><Input placeholder="you@example.com" /><Input placeholder="How can we help?" /></CardContent><CardFooter>{text("buttonLabel", "span", buttonVariants())}</CardFooter></Card>);
     case "navigation":
-      return frame("bg-white p-4", <Card className="border border-zinc-200 bg-white shadow-none"><CardContent className="flex items-center justify-between p-4">{text("title", "span", "font-semibold text-zinc-900")}<span className="flex gap-4 text-sm text-zinc-600"><span>Studio</span><span>Work</span><span>Journal</span></span>{text("buttonLabel", "span", buttonVariants({ size: "sm" }))}</CardContent></Card>);
+      return frame("bg-white p-4", <Card className="border border-zinc-200 bg-white shadow-none" style={surfaceStyle}><CardContent className="flex items-center justify-between p-4">{text("title", "span", "font-semibold text-zinc-900")}<span className="flex gap-4 text-sm text-zinc-600"><span>Studio</span><span>Work</span><span>Journal</span></span>{text("buttonLabel", "span", buttonVariants({ size: "sm" }))}</CardContent></Card>);
     case "footer":
-      return frame("bg-zinc-950 p-6", <Card className="border-zinc-800 bg-zinc-950 text-zinc-200 shadow-none"><CardContent className="flex items-center justify-between p-4">{text("title", "span", "font-semibold text-white")}{text("body", "span", "text-xs text-zinc-500")}</CardContent></Card>);
+      return frame("bg-zinc-950 p-6", <Card className="border-zinc-800 bg-zinc-950 text-zinc-200 shadow-none" style={surfaceStyle}><CardContent className="flex items-center justify-between p-4">{text("title", "span", "font-semibold text-white")}{text("body", "span", "text-xs text-zinc-500")}</CardContent></Card>);
     case "input":
-      return frame("rounded-md", <Input aria-label={content.body} placeholder={content.body} />);
+      return frame("rounded-md", <Input aria-label={content.body} placeholder={content.body} style={surfaceStyle} />);
   }
 }
 
@@ -1595,15 +1605,11 @@ function InspectorSection({ title, children }: { title: string; children: ReactN
   return <section className="space-y-3 border-b border-zinc-200 p-4"><Button className="h-6 w-full justify-between px-0 text-xs font-semibold hover:bg-transparent" variant="ghost">{title}<ChevronDown className="size-3.5 text-zinc-500" /></Button>{children}</section>;
 }
 
-function PropertyRow({ label, value }: { label: string; value: string }) {
-  return <div className="grid grid-cols-[64px_1fr] items-center gap-2 text-[10px]"><span className="text-zinc-500">{label}</span><Input aria-label={label} className="h-8 border-0 bg-zinc-50 px-2 text-[10px] shadow-none" readOnly value={value} /></div>;
-}
-
 function Inspector({ actions, breakpoint }: { actions: EditorActions; breakpoint: Breakpoint }) {
   const { page, selectedNode: node } = actions;
   const showLayout = !!node && node.type !== "text";
   const showTypography = !!node && ownsText(node);
-  const showAppearance = node?.type !== "text" && node?.type !== "heading";
+  const showAppearance = !!node && ownsSurface(node);
   return (
     <aside className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-white">
       <Tabs className="min-h-0 flex-1 !gap-0" defaultValue="style">
@@ -1638,7 +1644,17 @@ function Inspector({ actions, breakpoint }: { actions: EditorActions; breakpoint
                 {showAppearance && <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />}
               </>
             )}
-            {showAppearance && <ResizablePanel defaultSize="20" id="appearance" minSize="120px"><ScrollArea className="h-full"><InspectorSection title="Appearance"><PropertyRow label="Opacity" value="100%" /><PropertyRow label="Radius" value="⌜  0" /></InspectorSection><Button className="h-10 w-full justify-between rounded-none px-4 text-xs font-semibold hover:bg-zinc-50" variant="ghost">Effects <Plus className="size-3.5 text-zinc-500" /></Button></ScrollArea></ResizablePanel>}
+            {page && node && showAppearance && (
+              <ResizablePanel defaultSize="20" id="appearance" minSize="120px">
+                <AppearanceInspector
+                  breakpoint={breakpoint}
+                  key={`${page.id}:${node.id}:${breakpoint}`}
+                  node={node}
+                  onChange={(styles) => actions.edit({ type: "node.updateStyle", pageId: page.id, nodeId: node.id, breakpoint, styles })}
+                  onReset={(property) => actions.edit({ type: "node.resetStyle", pageId: page.id, nodeId: node.id, breakpoint, property })}
+                />
+              </ResizablePanel>
+            )}
           </ResizablePanelGroup>
         </TabsContent>
         <TabsContent className="min-h-0 overflow-auto" value="settings">
