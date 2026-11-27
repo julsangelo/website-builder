@@ -241,3 +241,126 @@ for (const viewport of ["Tablet", "Mobile"]) {
     await expect(page.getByRole("button", { name: "Undo", exact: true })).toBeDisabled();
   });
 }
+
+test("Layout changes flex and grid flow while keeping child and Layer order", async ({ page }) => {
+  const container = page.locator('article [data-node-id][aria-label="Content + media"] [data-node-id][aria-label="Content"]');
+  const childIds = () => container.locator(":scope > [data-node-id]").evaluateAll((children) =>
+    children.map((child) => child.getAttribute("data-node-id")));
+  const children = await childIds();
+  const display = page.getByRole("combobox", { name: "Display" });
+  const direction = page.getByRole("combobox", { name: "Direction" });
+  const wrap = page.getByRole("combobox", { name: "Wrap" });
+  const columns = page.getByRole("textbox", { name: "Grid columns" });
+  const rows = page.getByRole("textbox", { name: "Grid rows" });
+  const gap = page.getByRole("textbox", { name: "Gap" });
+  const heading = page.getByRole("button", { name: "Layout", exact: true });
+  const undo = page.getByRole("button", { name: "Undo", exact: true });
+
+  const id = await container.getAttribute("data-node-id");
+  await page.locator(`[data-layer-node-id="${id}"]`).getByRole("button", { name: "Content", exact: true }).click();
+  await expect(display).toHaveValue("flex");
+  await expect(columns).toHaveCount(0);
+  await direction.selectOption("row");
+  await wrap.selectOption("wrap");
+  await page.getByRole("combobox", { name: "Align items" }).selectOption("center");
+  await page.getByRole("combobox", { name: "Justify content" }).selectOption("space-between");
+  await expect(container).toHaveCSS("flex-direction", "row");
+  await expect(container).toHaveCSS("flex-wrap", "wrap");
+  await expect(container).toHaveCSS("align-items", "center");
+  await expect(container).toHaveCSS("justify-content", "space-between");
+
+  await display.selectOption("grid");
+  await expect(container).toHaveCSS("display", "grid");
+  await expect(direction).toHaveCount(0);
+  await undo.click();
+  await expect(container).toHaveCSS("display", "flex");
+  await expect(direction).toHaveValue("row");
+  await display.selectOption("grid");
+  await columns.fill("1fr 1fr");
+  await rows.fill("80px 100px");
+  await gap.fill("18px");
+  await expect(container).toHaveCSS("grid-template-rows", "80px 100px");
+  await expect(container).toHaveCSS("gap", "18px");
+  await expect.poll(() => container.locator(":scope > [data-node-id]").evaluateAll(([first, second, third]) => {
+    const [a, b, c] = [first, second, third].map((child) => child.getBoundingClientRect());
+    return b.left > a.left && c.top > a.top;
+  })).toBe(true);
+  expect(await childIds()).toEqual(children);
+  const layerIds = await page.locator("[data-layer-node-id]").evaluateAll((layers) =>
+    layers.map((layer) => layer.getAttribute("data-layer-node-id")));
+  expect(layerIds.filter((layer) => children.includes(layer))).toEqual(children);
+
+  await page.setViewportSize({ width: 1440, height: 760 });
+  const layoutScroll = page.locator('[data-slot="scroll-area-viewport"]').filter({ has: heading });
+  await layoutScroll.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect(heading).toHaveCSS("position", "sticky");
+  await expect(heading).not.toHaveCSS("box-shadow", "none");
+  await expect.poll(async () => {
+    const [headerBox, scrollBox] = await Promise.all([heading.boundingBox(), layoutScroll.boundingBox()]);
+    return Math.abs(headerBox!.y - scrollBox!.y);
+  }).toBeLessThan(2);
+
+  await container.getByText("Our approach").click();
+  await expect(heading).toHaveCount(0);
+});
+
+test("Layout overrides inherit across viewports and survive reload and undo", async ({ page }) => {
+  const section = page.locator('article [data-node-id][aria-label="Content + media"]');
+  const selectSection = async () => {
+    const id = await section.getAttribute("data-node-id");
+    await page.locator(`[data-layer-node-id="${id}"]`).getByRole("button", { name: "Content + media", exact: true }).click();
+  };
+  const desktop = page.getByRole("button", { name: "Desktop viewport" });
+  const tablet = page.getByRole("button", { name: "Tablet viewport" });
+  const mobile = page.getByRole("button", { name: "Mobile viewport" });
+  const display = page.getByRole("combobox", { name: "Display" });
+  const columns = page.getByRole("textbox", { name: "Grid columns" });
+  const gap = page.getByRole("textbox", { name: "Gap" });
+  const resetGap = page.getByRole("button", { name: "Reset Gap", exact: true });
+  const undo = page.getByRole("button", { name: "Undo", exact: true });
+  const redo = page.getByRole("button", { name: "Redo", exact: true });
+
+  await selectSection();
+  await expect(gap).toHaveValue("normal");
+  await tablet.click();
+  await columns.fill("2fr 1fr");
+  await gap.fill("24px");
+  await expect(section).toHaveCSS("gap", "24px");
+  await gap.fill("-3px");
+  await expect(gap).toHaveAttribute("aria-invalid", "true");
+  await expect(section).toHaveCSS("gap", "24px");
+  await mobile.click();
+  await expect(columns).toHaveValue("2fr 1fr");
+  await expect(gap).toHaveValue("24px");
+  await expect(resetGap).toHaveCount(0);
+  await desktop.click();
+  await expect(columns).toHaveValue("repeat(2, minmax(0, 1fr))");
+  await expect(section).toHaveCSS("gap", "normal");
+
+  await tablet.click();
+  await resetGap.click();
+  await expect(section).toHaveCSS("gap", "normal");
+  await undo.click();
+  await expect(section).toHaveCSS("gap", "24px");
+  await redo.click();
+  await expect(section).toHaveCSS("gap", "normal");
+  await undo.click();
+  await display.selectOption("none");
+  await expect(section).toBeHidden();
+  await expect(gap).toHaveCount(0);
+  await page.getByRole("button", { name: "Reset Display" }).click();
+  await expect(section).toHaveCSS("display", "grid");
+  await expect(savedStatus(page)).toBeVisible();
+  await page.reload();
+  await selectSection();
+  await tablet.click();
+  await expect(columns).toHaveValue("2fr 1fr");
+  await expect(section).toHaveCSS("gap", "24px");
+  await resetGap.click();
+  await expect(savedStatus(page)).toBeVisible();
+  await page.reload();
+  await selectSection();
+  await tablet.click();
+  await expect(gap).toHaveValue("normal");
+  await expect(resetGap).toHaveCount(0);
+});

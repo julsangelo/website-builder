@@ -59,8 +59,24 @@ export function isContainer(type: BlockType) {
   return type === "section" || type === "box" || type === "stack" || type === "grid";
 }
 
+const containerStyleDefaults: Record<string, StyleValues> = {
+  "split-content": { justifyContent: "center" },
+  "preset-card": { display: "grid", gap: "0.75rem" },
+  "preset-footer-navigation": { display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "1rem" },
+  "preset-form": { display: "grid", gap: "0.75rem" },
+  "preset-links": { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "1rem" },
+  "preset-quote": { display: "grid", gap: "1rem" },
+  "preset-stat": { display: "grid", gap: "0.5rem" },
+};
+
 export function resolveStyles(node: EditorNode, breakpoint: Breakpoint): StyleValues {
+  const appearance = node.metadata?.appearance;
+  const defaults = node.type === "section" && node.metadata?.preset === "navigation"
+    ? { display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" } as const
+    : typeof appearance === "string" && Object.hasOwn(containerStyleDefaults, appearance)
+      ? containerStyleDefaults[appearance] : undefined;
   return {
+    ...defaults,
     ...node.styles.base,
     ...(breakpoint !== "base" && node.styles.tablet),
     ...(breakpoint === "mobile" && node.styles.mobile),
@@ -72,6 +88,7 @@ export type DocumentOperation =
   | { type: "node.move"; pageId: string; nodeId: string; parentId: string | null; index: number }
   | { type: "node.updateContent"; pageId: string; nodeId: string; content: Partial<NodeContent> }
   | { type: "node.updateStyle"; pageId: string; nodeId: string; breakpoint: Breakpoint; styles: Partial<StyleValues> }
+  | { type: "node.resetStyle"; pageId: string; nodeId: string; breakpoint: Breakpoint; property: keyof StyleValues }
   | { type: "node.setVisibility"; pageId: string; nodeId: string; visible: boolean }
   | { type: "node.delete"; pageId: string; nodeId: string };
 
@@ -252,13 +269,23 @@ export function applyDocumentOperation(document: SiteDocument, operation: Docume
       if (!Object.hasOwn(page.nodes, operation.nodeId)) throw new Error(`Node ${operation.nodeId} was not found`);
       return updatePage(document, page.id, (current) => ({ ...current, nodes: { ...current.nodes, [node.id]: { ...node, content: { ...node.content, ...operation.content } } } }));
     }
-    case "node.updateStyle": {
+    case "node.updateStyle":
+    case "node.resetStyle": {
       const node = page.nodes[operation.nodeId];
       if (!Object.hasOwn(page.nodes, operation.nodeId)) throw new Error(`Node ${operation.nodeId} was not found`);
-      const changedStyles = Object.fromEntries(Object.entries(operation.styles).filter(([, value]) => value !== undefined)) as StyleValues;
-      const styles = operation.breakpoint === "base"
-        ? { ...node.styles, base: { ...node.styles.base, ...changedStyles } }
-        : { ...node.styles, [operation.breakpoint]: { ...node.styles[operation.breakpoint], ...changedStyles } };
+      const { breakpoint } = operation;
+      const current = node.styles[breakpoint] ?? {};
+      const next = { ...current };
+      if (operation.type === "node.resetStyle") {
+        if (!Object.hasOwn(current, operation.property)) return document;
+        delete next[operation.property];
+      } else {
+        const changes = Object.entries(operation.styles).filter(([key, value]) =>
+          value !== undefined && current[key as keyof StyleValues] !== value);
+        if (!changes.length) return document;
+        Object.assign(next, Object.fromEntries(changes));
+      }
+      const styles = { ...node.styles, [breakpoint]: next };
       return updatePage(document, page.id, (current) => ({ ...current, nodes: { ...current.nodes, [node.id]: { ...node, styles } } }));
     }
     case "node.setVisibility": {

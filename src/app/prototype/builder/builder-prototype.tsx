@@ -98,6 +98,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog } from "@base-ui/react/dialog";
+import { LayoutInspector } from "./layout-inspector";
 import { ButtonLinkControl, PreviewText } from "./preview-content";
 import { PreviewImage, type ImageEdit } from "./preview-image";
 import {
@@ -296,6 +297,7 @@ type EditorActions = {
   toggleLayerVisibility: (node: EditorNode) => void;
   updateBlockContent: (blockId: string, content: NodeContent) => void;
   updateImage: (nodeId: string, breakpoint: Breakpoint, edit: ImageEdit) => void;
+  edit: (operation: DocumentOperation) => void;
 };
 
 function IconButton({ label, children }: { label: string; children: ReactNode }) {
@@ -1345,7 +1347,7 @@ function PreviewSelectable({
 const sectionClasses: Record<string, string> = {
   hero: "bg-[#f5f0e8]",
   "content-media": "bg-zinc-900 text-white",
-  navigation: "flex flex-wrap items-center justify-between border-b border-zinc-200",
+  navigation: "border-b border-zinc-200",
   features: "bg-white px-4 py-8",
   collection: "bg-[#f8f7f4] px-4 py-8",
   gallery: "bg-white p-6",
@@ -1358,13 +1360,13 @@ const sectionClasses: Record<string, string> = {
 };
 
 const presetContainerClasses: Record<string, string> = {
-  "preset-card": "grid min-w-0 content-start gap-3 rounded-xl border border-zinc-200 bg-white p-5 text-zinc-900",
-  "preset-footer-navigation": "flex flex-wrap items-center justify-between gap-4 px-4 py-3",
-  "preset-form": "grid gap-3 rounded-lg border border-zinc-200 bg-white p-6",
-  "preset-links": "flex flex-wrap items-center gap-4 px-4 py-3",
+  "preset-card": "min-w-0 content-start rounded-xl border border-zinc-200 bg-white p-5 text-zinc-900",
+  "preset-footer-navigation": "px-4 py-3",
+  "preset-form": "rounded-lg border border-zinc-200 bg-white p-6",
+  "preset-links": "px-4 py-3",
   "preset-questions": "divide-y divide-zinc-200 rounded-lg border border-zinc-200 px-4",
-  "preset-quote": "mx-auto grid max-w-3xl gap-4 rounded-lg bg-white p-8 text-zinc-900",
-  "preset-stat": "grid gap-2 rounded-lg bg-white p-7 text-center text-zinc-900 [&_h2]:text-5xl",
+  "preset-quote": "mx-auto max-w-3xl rounded-lg bg-white p-8 text-zinc-900",
+  "preset-stat": "rounded-lg bg-white p-7 text-center text-zinc-900 [&_h2]:text-5xl",
 };
 
 function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActions; node: EditorNode; breakpoint: Breakpoint; move: PreviewMove }) {
@@ -1430,7 +1432,7 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
     case "preset-grid":
       return frame("min-h-16 min-w-0 p-4");
     case "split-content":
-      return frame("min-h-80 min-w-0 justify-center " + (breakpoint === "base" ? "p-14" : "p-9"));
+      return frame("min-h-80 min-w-0 " + (breakpoint === "base" ? "p-14" : "p-9"));
     case "preset-question": {
       const triggerIndex = node.childIds.findIndex((id) => page.nodes[id].metadata?.disclosureTrigger === true && page.nodes[id].visible);
       if (triggerIndex === -1) return frame("py-2 text-zinc-900");
@@ -1499,6 +1501,11 @@ function PreviewNode({ actions, node, breakpoint, move }: { actions: EditorActio
   }
 }
 
+function breakpointForWidth(width: number): Breakpoint {
+  if (width < 510) return "mobile";
+  return width <= 768 ? "tablet" : "base";
+}
+
 function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }: { actions: EditorActions; artboardHeight: number; artboardRef: React.RefObject<HTMLElement | null>; isResizing: boolean; viewport: CanvasViewport }) {
   const compactPreview = viewport.width < 768;
   const narrowPreview = viewport.width < 510;
@@ -1508,7 +1515,7 @@ function Artboard({ actions, artboardHeight, artboardRef, isResizing, viewport }
   const [moveDialog, setMoveDialog] = useState<{ nodeId: string; open: boolean } | null>(null);
   const move = { start: startMove, openDialog: (nodeId: string) => setMoveDialog({ nodeId, open: true }) };
   const hasVisibleContent = page?.rootIds.some((id) => page.nodes[id].visible);
-  const breakpoint: Breakpoint = narrowPreview ? "mobile" : viewport.width <= 768 ? "tablet" : "base";
+  const breakpoint = breakpointForWidth(viewport.width);
 
   return (
     <article
@@ -1586,16 +1593,28 @@ function PropertyRow({ label, value }: { label: string; value: string }) {
   return <div className="grid grid-cols-[64px_1fr] items-center gap-2 text-[10px]"><span className="text-zinc-500">{label}</span><Input aria-label={label} className="h-8 border-0 bg-zinc-50 px-2 text-[10px] shadow-none" readOnly value={value} /></div>;
 }
 
-function Inspector({ actions }: { actions: EditorActions }) {
-  const node = actions.selectedNode;
+function Inspector({ actions, breakpoint }: { actions: EditorActions; breakpoint: Breakpoint }) {
+  const { page, selectedNode: node } = actions;
   return (
     <aside className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-white">
       <Tabs className="min-h-0 flex-1 !gap-0" defaultValue="style">
         <div className="flex h-12 shrink-0 items-center border-b border-zinc-200 px-4 text-xs"><TabsList className="!grid !h-full !w-40 grid-cols-2 !gap-0 !p-0" variant="line"><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs data-active:text-zinc-950 after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="style">Style</TabsTrigger><TabsTrigger className="!flex !h-full !w-full !items-center !justify-center px-0 pb-0.5 text-xs after:!bottom-[-1.5px] after:z-10 after:h-0.5 after:bg-orange-600" value="settings">Settings</TabsTrigger></TabsList><MoreHorizontal className="ml-auto size-4 text-zinc-500" /></div>
         <TabsContent className="min-h-0" value="style">
           <ResizablePanelGroup className="min-h-0 flex-1" id="inspector-sections" orientation="vertical">
-            <ResizablePanel defaultSize="38" id="layout" minSize="210px"><ScrollArea className="h-full"><InspectorSection title="Layout"><div className="grid grid-cols-4 gap-1 rounded-md bg-zinc-50 p-1"><Button className="h-7 bg-white text-orange-600 shadow-sm hover:bg-white" size="sm" variant="ghost"><PanelTop className="size-3.5" /></Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost"><LayoutTemplate className="size-3.5" /></Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost"><Settings2 className="size-3.5" /></Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost"><MousePointer2 className="size-3.5" /></Button></div><PropertyRow label="Size" value="W  Fill     H  Auto" /><PropertyRow label="Position" value="Relative" /><div className="rounded-md bg-zinc-50 p-2 text-[9px] text-zinc-500"><div className="flex justify-between"><span>MARGIN</span><span>0</span></div><div className="my-1.5 flex items-center gap-2"><span>0</span><div className="flex flex-1 items-center justify-center border border-zinc-200 p-2"><span className="bg-orange-100 px-6 py-2 text-orange-600">PADDING&nbsp; 0</span></div><span>0</span></div><p className="text-center">0</p></div></InspectorSection></ScrollArea></ResizablePanel>
-            <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
+            {page && node && isContainer(node.type) && (
+              <>
+                <ResizablePanel defaultSize="38" id="layout" minSize="210px">
+                  <LayoutInspector
+                    breakpoint={breakpoint}
+                    key={`${page.id}:${node.id}:${breakpoint}`}
+                    node={node}
+                    onChange={(styles) => actions.edit({ type: "node.updateStyle", pageId: page.id, nodeId: node.id, breakpoint, styles })}
+                    onReset={(property) => actions.edit({ type: "node.resetStyle", pageId: page.id, nodeId: node.id, breakpoint, property })}
+                  />
+                </ResizablePanel>
+                <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
+              </>
+            )}
             <ResizablePanel defaultSize="42" id="typography" minSize="240px"><ScrollArea className="h-full"><InspectorSection title="Typography"><Button className="h-8 w-full justify-between bg-zinc-50 px-2 text-base font-medium hover:bg-zinc-100" variant="ghost">Inter <ChevronDown className="size-3 text-zinc-500" /></Button><PropertyRow label="Weight" value="Semibold" /><PropertyRow label="Size" value="76   px" /><div className="grid grid-cols-2 gap-2"><Input aria-label="Line height" className="h-8 border-0 bg-zinc-50 text-xs shadow-none" readOnly value="↕  98%" /><Input aria-label="Letter spacing" className="h-8 border-0 bg-zinc-50 text-xs shadow-none" readOnly value="↔  −1.6" /></div><div className="grid grid-cols-4 rounded-md bg-zinc-50 p-1"><Button className="h-7 bg-white text-orange-600" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button><Button className="h-7 text-zinc-500" size="sm" variant="ghost">≡</Button></div><PropertyRow label="Color" value="■  333B32   100%" /></InspectorSection></ScrollArea></ResizablePanel>
             <ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle />
             <ResizablePanel defaultSize="20" id="appearance" minSize="120px"><ScrollArea className="h-full"><InspectorSection title="Appearance"><PropertyRow label="Opacity" value="100%" /><PropertyRow label="Radius" value="⌜  0" /></InspectorSection><Button className="h-10 w-full justify-between rounded-none px-4 text-xs font-semibold hover:bg-zinc-50" variant="ghost">Effects <Plus className="size-3.5 text-zinc-500" /></Button></ScrollArea></ResizablePanel>
@@ -2052,7 +2071,7 @@ function FormaVariant({
         <ResizablePanelGroup className="h-full min-h-0" id={`workspace-${variant}`} orientation="horizontal">
           {showNavigator && <><ResizablePanel defaultSize="244px" id="navigator" maxSize="380px" minSize="200px"><Navigator actions={actions} onAddPage={onAddPage} onDeletePage={onDeletePage} onRenamePage={onRenamePage} onSelectPage={onSelectPage} pages={pages} selectedPageId={selectedPageId} /></ResizablePanel><ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle /></>}
           <ResizablePanel defaultSize={compact ? "100" : "60"} id="canvas" minSize={compact ? "280px" : "560px"}><Canvas actions={actions} compact={compact} onViewportChange={onViewportChange} page={page} variant={variant} viewport={viewport} /></ResizablePanel>
-          {showInspector && <><ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle /><ResizablePanel defaultSize="288px" id="inspector" maxSize="420px" minSize="240px"><Inspector actions={actions} /></ResizablePanel></>}
+          {showInspector && <><ResizableHandle className="bg-zinc-200 hover:bg-orange-500" withHandle /><ResizablePanel defaultSize="288px" id="inspector" maxSize="420px" minSize="240px"><Inspector actions={actions} breakpoint={breakpointForWidth(viewport.width)} /></ResizablePanel></>}
         </ResizablePanelGroup>
       </div>
     </div>
@@ -2341,7 +2360,7 @@ export function BuilderEditor({ showVariantSwitcher = false }: { showVariantSwit
   }, [changeVariant, current, showVariantSwitcher]);
 
   const actions: EditorActions = {
-    page, hasPage: page !== null, selectedNode, choose, insertItem, insertDrag, moveCanvasNode, moveLayer, toggleLayerCollapse,
+    page, hasPage: page !== null, selectedNode, choose, edit, insertItem, insertDrag, moveCanvasNode, moveLayer, toggleLayerCollapse,
     selection: selectedNode ? layerSelection : null,
     expandLayer: (id) => { if (page) expandLayers(page.id, [id]); },
     isLayerCollapsed: (id) => page !== null && (collapsedLayers[page.id] ?? []).includes(id),
